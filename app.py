@@ -14,7 +14,7 @@ st.markdown("<h1 style='text-align: center;'>📊 Sales Intelligence & Product R
 
 @st.cache_data
 def load_data():
-    df = pd.read_csv("/content/drive/MyDrive/Data Analysis - Sample File.csv")
+    df = pd.read_csv("Data Analysis - Sample File.csv")
     df['Redistribution Value'] = df['Redistribution Value'].str.replace(',', '').astype(float)
     df['Delivered_date'] = pd.to_datetime(df['Delivered_date'], errors='coerce')
     df['Month'] = df['Delivered_date'].dt.to_period('M')
