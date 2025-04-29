@@ -6,13 +6,13 @@ from sklearn.metrics.pairwise import cosine_similarity
 from datetime import datetime
 from PIL import Image
 
-logo = Image.open("logo.png") 
+logo = Image.open("logo.png")
 st.image(logo, width=120)
 st.markdown("<h1 style='text-align: center;'>📊 Sales Intelligence & Product Recommendation Dashboard</h1>", unsafe_allow_html=True)
 
 # Load and preprocess data
 def load_data():
-    df = pd.read_csv("Data Analysis - Sample File.csv")
+    df = pd.read_csv("/content/drive/MyDrive/Data Analysis - Sample File.csv")
     df['Redistribution Value'] = df['Redistribution Value'].str.replace(',', '', regex=False).astype(float)
     df['Delivered_date'] = pd.to_datetime(df['Delivered_date'], errors='coerce')
     df['Month'] = df['Delivered_date'].dt.to_period('M')
@@ -58,19 +58,22 @@ elif section == "📉 Drop Detection":
     st.dataframe(disp)
 
 elif section == "👤 Customer Profiling":
-    st.subheader("Customer RFM & Discount Recommendations")
+    st.subheader("Customer RFM, Next Purchase & Discounts")
+    # RFM calculation
     max_date = DF['Delivered_date'].max()
     last = DF.groupby('Customer_Phone')['Delivered_date'].max()
     recency = (max_date - last).dt.days
     freq = DF.groupby('Customer_Phone')['Order_Id'].nunique()
     val = DF.groupby(['Customer_Phone','Order_Id'])['Redistribution Value'].sum().reset_index()
     monetary = val.groupby('Customer_Phone')['Redistribution Value'].mean()
+    # Assemble RFM DataFrame
     rfm = pd.DataFrame({
         'Customer_Phone': recency.index,
         'Recency': recency.values,
         'Frequency': freq.values,
         'Monetary': monetary.values
     })
+    # Quantiles for segmentation and discounts
     q = {col: rfm[col].quantile([0.25,0.5,0.75]).to_dict() for col in ['Recency','Frequency','Monetary']}
     def assign_segment(row):
         if row['Recency'] <= q['Recency'][0.25] and row['Frequency'] >= q['Frequency'][0.75] and row['Monetary'] >= q['Monetary'][0.75]: return 'Best Customers'
@@ -79,13 +82,26 @@ elif section == "👤 Customer Profiling":
         if q['Recency'][0.25] < row['Recency'] <= q['Recency'][0.75] and row['Frequency'] >= q['Frequency'][0.5]: return 'Potential Loyalists'
         return 'Others'
     rfm['Segment'] = rfm.apply(assign_segment, axis=1)
+    # Discount logic
     med_best = rfm.loc[rfm['Segment']=='Best Customers','Monetary'].median()
     med_loyal = rfm.loc[rfm['Segment']=='Potential Loyalists','Monetary'].median()
     rfm['Recommended_Discount'] = 0
     rfm.loc[(rfm['Segment']=='Best Customers')&(rfm['Monetary']<med_best),'Recommended_Discount']=10
     rfm.loc[(rfm['Segment']=='Potential Loyalists')&(rfm['Monetary']<med_loyal),'Recommended_Discount']=5
-    cust_ids = rfm['Customer_Phone'].tolist()
-    sel = st.selectbox("Select Customer Phone:", cust_ids)
+    # Next purchase prediction
+    grouped = DF.sort_values(['Customer_Phone','Delivered_date']).groupby('Customer_Phone')
+    last_dates = grouped['Delivered_date'].last().rename('last_purchase_date')
+    inter_days = grouped['Delivered_date'].diff().dt.days
+    avg_days = inter_days.groupby(DF['Customer_Phone']).mean().fillna(inter_days.mean()).rename('avg_inter_purchase_days')
+    summary = pd.concat([last_dates, avg_days], axis=1)
+    summary['predicted_next_purchase'] = summary['last_purchase_date'] + pd.to_timedelta(summary['avg_inter_purchase_days'], unit='D')
+    freq_df = DF.groupby(['Customer_Phone','SKU_Code']).size().rename('count').reset_index()
+    idx = freq_df.groupby('Customer_Phone')['count'].idxmax()
+    likely = freq_df.loc[idx, ['Customer_Phone','SKU_Code']].rename(columns={'SKU_Code':'likely_next_SKU'})
+    next_df = summary.reset_index().merge(likely, on='Customer_Phone')
+    # Interactive display
+    ids = rfm['Customer_Phone'].tolist()
+    sel = st.selectbox("Select Customer Phone:", ids)
     cust = rfm[rfm['Customer_Phone']==sel].iloc[0]
     st.metric("Recency (days)",cust['Recency'])
     st.metric("Frequency (orders)",cust['Frequency'])
@@ -93,6 +109,10 @@ elif section == "👤 Customer Profiling":
     st.metric("Segment",cust['Segment'])
     if cust['Recommended_Discount']>0:
         st.metric("Recommended Discount",f"{cust['Recommended_Discount']}%")
+    # Next purchase metrics
+    np_rec = next_df[next_df['Customer_Phone']==sel].iloc[0]
+    st.metric("Next Purchase Date", np_rec['predicted_next_purchase'].date())
+    st.write(f"Likely Next SKU: {np_rec['likely_next_SKU']}")
 
 elif section == "🔁 Cross-Selling":
     st.subheader("Brand Switching Patterns (Top 3 Alternatives)")
