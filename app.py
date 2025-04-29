@@ -6,9 +6,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 from datetime import datetime
 from PIL import Image
 
+# Display logo and title
+logo = Image.open("logo.png")
+st.image(logo, width=120)
+st.markdown("<h1 style='text-align: center;'>📊 Sales Intelligence & Product Recommendation Dashboard</h1>", unsafe_allow_html=True)
+
 # Load and preprocess data
 def load_data():
-    df = pd.read_csv("/content/drive/MyDrive/Data Analysis - Sample File.csv")
+    df = pd.read_csv("Data Analysis - Sample File.csv")
     df['Redistribution Value'] = df['Redistribution Value'].str.replace(',', '', regex=False).astype(float)
     df['Delivered_date'] = pd.to_datetime(df['Delivered_date'], errors='coerce')
     df['Month'] = df['Delivered_date'].dt.to_period('M')
@@ -34,9 +39,9 @@ df_monthly = DF.groupby('Month')['Redistribution Value'].sum()
 
 if section == "📊 EDA Overview":
     st.subheader("Sales Trends Over Time")
-    line_data = df_monthly.copy()
-    line_data.index = line_data.index.to_timestamp()
-    st.line_chart(line_data)
+    monthly_orders = df_monthly.copy()
+    monthly_orders.index = monthly_orders.index.to_timestamp()
+    st.line_chart(monthly_orders)
     st.subheader("Top-Selling Products")
     prod = DF.groupby('SKU_Code')['Redistribution Value'].sum().nlargest(10)
     st.bar_chart(prod)
@@ -63,31 +68,34 @@ elif section == "👤 Customer Profiling":
     freq = DF.groupby('Customer_Phone')['Order_Id'].nunique()
     val = DF.groupby(['Customer_Phone','Order_Id'])['Redistribution Value'].sum().reset_index()
     monetary = val.groupby('Customer_Phone')['Redistribution Value'].mean()
+    # Assemble RFM DataFrame
     rfm = pd.DataFrame({
-        'Recency': recency,
-        'Frequency': freq,
-        'Monetary': monetary
-    }).reset_index()
+        'Customer_Phone': recency.index,
+        'Recency': recency.values,
+        'Frequency': freq.values,
+        'Monetary': monetary.values
+    })
     # Quantiles
     q = {col: rfm[col].quantile([0.25,0.5,0.75]).to_dict() for col in ['Recency','Frequency','Monetary']}
     # Segment assignment
-def assign_segment(row,q):
-    if row.Recency <= q['Recency'][0.25] and row.Frequency >= q['Frequency'][0.75] and row.Monetary >= q['Monetary'][0.75]:
-        return 'Best Customers'
-    if row.Recency >= q['Recency'][0.75] and row.Frequency <= q['Frequency'][0.25]:
-        return 'At-Risk Customers'
-    if row.Recency >= q['Recency'][0.75] and row.Monetary >= q['Monetary'][0.75]:
-        return 'Big Spenders Dropping Off'
-    if q['Recency'][0.25] < row.Recency <= q['Recency'][0.75] and row.Frequency >= q['Frequency'][0.5]:
-        return 'Potential Loyalists'
-    return 'Others'
-rfm['Segment'] = rfm.apply(assign_segment, axis=1, args=(q,))
+    def assign_segment(row):
+        if row['Recency'] <= q['Recency'][0.25] and row['Frequency'] >= q['Frequency'][0.75] and row['Monetary'] >= q['Monetary'][0.75]:
+            return 'Best Customers'
+        elif row['Recency'] >= q['Recency'][0.75] and row['Frequency'] <= q['Frequency'][0.25]:
+            return 'At-Risk Customers'
+        elif row['Recency'] >= q['Recency'][0.75] and row['Monetary'] >= q['Monetary'][0.75]:
+            return 'Big Spenders Dropping Off'
+        elif q['Recency'][0.25] < row['Recency'] <= q['Recency'][0.75] and row['Frequency'] >= q['Frequency'][0.5]:
+            return 'Potential Loyalists'
+        else:
+            return 'Others'
+    rfm['Segment'] = rfm.apply(assign_segment, axis=1)
     # Discount logic
-    med_best = rfm[rfm.Segment=='Best Customers'].Monetary.median()
-    med_loyal = rfm[rfm.Segment=='Potential Loyalists'].Monetary.median()
+    med_best = rfm.loc[rfm['Segment']=='Best Customers', 'Monetary'].median()
+    med_loyal = rfm.loc[rfm['Segment']=='Potential Loyalists', 'Monetary'].median()
     rfm['Recommended_Discount'] = 0
-    rfm.loc[(rfm.Segment=='Best Customers') & (rfm.Monetary < med_best), 'Recommended_Discount'] = 10
-    rfm.loc[(rfm.Segment=='Potential Loyalists') & (rfm.Monetary < med_loyal), 'Recommended_Discount'] = 5
+    rfm.loc[(rfm['Segment']=='Best Customers') & (rfm['Monetary'] < med_best), 'Recommended_Discount'] = 10
+    rfm.loc[(rfm['Segment']=='Potential Loyalists') & (rfm['Monetary'] < med_loyal), 'Recommended_Discount'] = 5
     # Display
     st.dataframe(rfm[['Customer_Phone','Recency','Frequency','Monetary','Segment','Recommended_Discount']])
 
@@ -96,10 +104,10 @@ elif section == "🔁 Cross-Selling":
     last_m = DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
     lm = DF['Month'].max()
     dropped = last_m[last_m.Month < lm]
-    m = DF.merge(dropped, on='Customer_Phone', suffixes=('','_d'))
-    sw = m[(m.Month > m.Month_d) & (m.Brand != m.Brand_d)]
-    top3 = sw.groupby(['Brand_d','Brand'])['Order_Id'].count().reset_index().sort_values(['Brand_d','Order_Id'],ascending=[True,False])
-    st.dataframe(top3.groupby('Brand_d').head(3))
+    merged = DF.merge(dropped, on='Customer_Phone', suffixes=('','_dropped'))
+    switched = merged[(merged['Month'] > merged['Month_dropped']) & (merged['Brand'] != merged['Brand_dropped'])]
+    switches = switched.groupby(['Brand_dropped','Brand'])['Order_Id'].count().reset_index().sort_values(['Brand_dropped','Order_Id'],ascending=[True,False])
+    st.dataframe(switches.groupby('Brand_dropped').head(3))
 
 elif section == "🔗 Brand Correlation":
     st.subheader("Brand Correlation Matrix")
