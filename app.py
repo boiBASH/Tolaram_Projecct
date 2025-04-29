@@ -111,7 +111,8 @@ elif section == "👤 Customer Profiling":
         st.metric("Recommended Discount",f"{cust['Recommended_Discount']}%")
     # Next purchase metrics
     np_rec = next_df[next_df['Customer_Phone']==sel].iloc[0]
-    st.metric("Next Purchase Date", np_rec['predicted_next_purchase'].date())
+        # Format date as string for display
+    st.metric("Next Purchase Date", np_rec['predicted_next_purchase'].strftime("%Y-%m-%d"))
     st.write(f"Likely Next SKU: {np_rec['likely_next_SKU']}")
 
 elif section == "🔁 Cross-Selling":
