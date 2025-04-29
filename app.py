@@ -75,9 +75,8 @@ elif section == "👤 Customer Profiling":
         'Frequency': freq.values,
         'Monetary': monetary.values
     })
-    # Quantiles
+    # Quantiles for segmentation and discounts
     q = {col: rfm[col].quantile([0.25,0.5,0.75]).to_dict() for col in ['Recency','Frequency','Monetary']}
-    # Segment assignment
     def assign_segment(row):
         if row['Recency'] <= q['Recency'][0.25] and row['Frequency'] >= q['Frequency'][0.75] and row['Monetary'] >= q['Monetary'][0.75]:
             return 'Best Customers'
@@ -96,8 +95,16 @@ elif section == "👤 Customer Profiling":
     rfm['Recommended_Discount'] = 0
     rfm.loc[(rfm['Segment']=='Best Customers') & (rfm['Monetary'] < med_best), 'Recommended_Discount'] = 10
     rfm.loc[(rfm['Segment']=='Potential Loyalists') & (rfm['Monetary'] < med_loyal), 'Recommended_Discount'] = 5
-    # Display
-    st.dataframe(rfm[['Customer_Phone','Recency','Frequency','Monetary','Segment','Recommended_Discount']])
+    # Interactive display
+    customer_ids = rfm['Customer_Phone'].tolist()
+    selected = st.selectbox("Select Customer Phone:", customer_ids)
+    cust = rfm[rfm['Customer_Phone']==selected].iloc[0]
+    st.metric("Recency (days)", cust['Recency'])
+    st.metric("Frequency (orders)", cust['Frequency'])
+    st.metric("Average Spend (NGN)", f"₦{cust['Monetary']:.2f}")
+    st.metric("Segment", cust['Segment'])
+    if cust['Recommended_Discount'] > 0:
+        st.metric("Recommended Discount", f"{cust['Recommended_Discount']}%")
 
 elif section == "🔁 Cross-Selling":
     st.subheader("Brand Switching Patterns (Top 3)")
