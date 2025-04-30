@@ -1,30 +1,44 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.metrics.pairwise import cosine_similarity
 from datetime import datetime
 from PIL import Image
+import pickle
 
+# Logo and title
 logo = Image.open("logo.png")
 st.image(logo, width=120)
-st.markdown("<h1 style='text-align: center;'>📊 Sales Intelligence & Product Recommendation Dashboard</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<h1 style='text-align: center;'>📊 Sales Intelligence & Product Recommendation Dashboard</h1>",
+    unsafe_allow_html=True
+)
 
-# Load and preprocess data
+# Load prediction artifacts
+@st.cache_resource
+def load_artifacts():
+    model = pickle.load(open("time_to_next_purchase_model.pkl", "rb"))
+    scaler = pickle.load(open("time_to_next_purchase_scaler.pkl", "rb"))
+    return model, scaler
+
+model, scaler = load_artifacts()
+
+# Load and preprocess data for EDA and other sections
+@st.cache_data
 def load_data():
     df = pd.read_csv("Data Analysis - Sample File.csv")
-    df['Redistribution Value'] = df['Redistribution Value'].str.replace(',', '', regex=False).astype(float)
+    df['Redistribution Value'] = df['Redistribution Value']\
+        .str.replace(',', '', regex=False).astype(float)
     df['Delivered_date'] = pd.to_datetime(df['Delivered_date'], errors='coerce')
     df['Month'] = df['Delivered_date'].dt.to_period('M')
     return df
 
 DF = load_data()
-
 # Sidebar navigation
 st.sidebar.title("📂 Navigation")
 section = st.sidebar.radio("Choose a Section", [
     "📊 EDA Overview",
     "📉 Drop Detection",
+    "⏳ Next Purchase Prediction",
     "👤 Customer Profiling",
     "🔁 Cross-Selling",
     "🔗 Brand Correlation",
@@ -46,6 +60,51 @@ if section == "📊 EDA Overview":
     st.subheader("Top Brands")
     top_brands = DF.groupby('Brand')['Redistribution Value'].sum().nlargest(10)
     st.bar_chart(top_brands)
+
+# --- Next Purchase Prediction with sliders ---
+elif section == "⏳ Next Purchase Prediction":
+    st.subheader("Predict Days Until Next Purchase")
+    st.markdown(
+        "Use the sliders below to input feature values for a customer and get the predicted days until their next purchase."
+    )
+
+    recency = st.slider(
+        "Recency (days since last purchase)", min_value=0, max_value=365, value=30
+    )
+    frequency = st.slider(
+        "Frequency (number of purchases)", min_value=1, max_value=100, value=5
+    )
+    monetary = st.number_input(
+        "Monetary (total spend)", min_value=0.0, max_value=100000.0,
+        value=1000.0, step=10.0
+    )
+    avg_interval = st.slider(
+        "Avg Interpurchase Interval (days)", min_value=0.0, max_value=365.0,
+        value=30.0, step=1.0
+    )
+    day_of_week = st.slider(
+        "Day of Week (0=Monday, 6=Sunday)", min_value=0, max_value=6, value=0
+    )
+    month = st.slider(
+        "Month (1=Jan, 12=Dec)", min_value=1, max_value=12, value=1
+    )
+
+    # Prepare single-row input DataFrame
+    input_df = pd.DataFrame({
+        'Recency': [recency],
+        'Frequency': [frequency],
+        'Monetary': [monetary],
+        'Avg_Interpurchase_Interval': [avg_interval],
+        'Day_of_Week': [day_of_week],
+        'Month': [month]
+    })
+
+    # Scale and predict
+    X_scaled = scaler.transform(input_df)
+    prediction = model.predict(X_scaled)[0]
+
+    st.success(f"### Predicted days until next purchase: {prediction:.1f}")
+
 
 elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
