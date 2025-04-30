@@ -13,10 +13,13 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Load prediction artifacts
 @st.cache_resource
 def load_artifacts():
     model = pickle.load(open("time_to_next_purchase_model.pkl", "rb"))
+    # Ensure each tree estimator has monotonic_cst to avoid attribute errors
+    for est in getattr(model, 'estimators_', []):
+        if not hasattr(est, 'monotonic_cst'):
+            setattr(est, 'monotonic_cst', None)
     scaler = pickle.load(open("time_to_next_purchase_scaler.pkl", "rb"))
     return model, scaler
 
