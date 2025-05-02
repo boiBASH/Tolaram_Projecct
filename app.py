@@ -27,18 +27,13 @@ def analyze_customer_purchases(customer_phone):
     customer_df.sort_values('Delivered_date', inplace=True)
     customer_df['Month'] = customer_df['Delivered_date'].dt.to_period('M')
 
-    # 1. SKUs bought
     skus_bought = customer_df['SKU_Code'].unique().tolist()
-
-    # 2. Last purchase date per SKU
     last_purchase = (
         customer_df.groupby('SKU_Code')['Delivered_date']
         .max()
         .dt.strftime('%Y-%m-%d')
         .to_dict()
     )
-
-    # 3. Avg monthly quantity per SKU
     monthly_qty = (
         customer_df.groupby(['SKU_Code', 'Month'])['Delivered Qty']
         .sum()
@@ -47,8 +42,6 @@ def analyze_customer_purchases(customer_phone):
         .round(2)
         .to_dict()
     )
-
-    # 4. Avg purchase interval (months)
     avg_interval = {}
     for sku, group in customer_df.groupby('SKU_Code'):
         dates = group['Delivered_date'].drop_duplicates().sort_values()
@@ -57,8 +50,6 @@ def analyze_customer_purchases(customer_phone):
             avg_interval[sku] = round(intervals.mean(), 2)
         else:
             avg_interval[sku] = "One"
-
-    # 5. Avg monthly spend per SKU
     monthly_spend = (
         customer_df.groupby(['SKU_Code', 'Month'])['Total_Amount_Spent']
         .sum()
@@ -68,7 +59,6 @@ def analyze_customer_purchases(customer_phone):
         .to_dict()
     )
 
-    # Build report dict
     report = {
         'Customer Phone': customer_phone,
         'Total Unique SKUs Bought': len(skus_bought),
@@ -91,16 +81,12 @@ def predict_next_purchases(customer_phone):
         return pd.DataFrame()
     customer_df['Month'] = customer_df['Delivered_date'].dt.to_period('M')
 
-    # Metrics per SKU
     freq = customer_df.groupby('SKU_Code')['Delivered_date'].nunique()
     qty = customer_df.groupby('SKU_Code')['Delivered Qty'].sum()
     spend = customer_df.groupby('SKU_Code')['Total_Amount_Spent'].sum()
-
-    # Recency in days
     last_purchase = customer_df.groupby('SKU_Code')['Delivered_date'].max()
     recency_days = (pd.Timestamp.today() - last_purchase).dt.days
 
-    # Scoring
     score_df = pd.DataFrame({
         'Frequency': freq,
         'Total_Quantity': qty,
@@ -118,7 +104,6 @@ def predict_next_purchases(customer_phone):
         score_df['Combined_Score'] / score_df['Combined_Score'].sum() * 100
     ).round(2)
 
-    # Expected metrics
     avg_monthly_qty = (
         customer_df.groupby(['SKU_Code', 'Month'])['Delivered Qty']
         .sum()
@@ -134,7 +119,6 @@ def predict_next_purchases(customer_phone):
     score_df['Expected Quantity'] = avg_monthly_qty.round(2)
     score_df['Expected Spend'] = avg_monthly_spend.round(2)
 
-    # Suggestion logic
     def suggest(row):
         if row['Expected Spend'] > 5000:
             return 'Offer Discount'
@@ -146,7 +130,6 @@ def predict_next_purchases(customer_phone):
 
     top3 = score_df.sort_values('Probability (%)', ascending=False).head(3)
     return top3[['Expected Quantity', 'Expected Spend', 'Probability (%)', 'Suggestion']].reset_index()
-
 
 # --- Streamlit UI ---
 logo = Image.open("logo.png")
@@ -171,7 +154,6 @@ section = st.sidebar.radio(
     ]
 )
 
-# Shared monthly summary
 df_monthly = DF.groupby('Month')['Redistribution Value'].sum()
 
 if section == "📊 EDA Overview":
@@ -226,8 +208,12 @@ elif section == "🔁 Cross-Selling":
         (merged['Brand'] != merged['Brand_dropped'])
     ]
     switches = switched.groupby(['Brand_dropped', 'Brand'])['Order_Id'].count().reset_index(name='Switch_Count')
-    top3 = switches.sort_values(['Brand_dropped', 'Switch_Count'], ascending=[True, False])
-        .groupby('Brand_dropped').head(3).reset_index(drop=True)
+    top3 = (
+        switches.sort_values(['Brand_dropped', 'Switch_Count'], ascending=[True, False])
+        .groupby('Brand_dropped')
+        .head(3)
+        .reset_index(drop=True)
+    )
     st.dataframe(top3)
 
 elif section == "🔗 Brand Correlation":
@@ -264,9 +250,11 @@ else:
             aggfunc='sum'
         ).fillna(0)
     )
-    pf = DF[['SKU_Code', 'Brand']]
+    pf = (
+        DF[['SKU_Code', 'Brand']]
         .drop_duplicates()
-        .set_index('SKU_Code')
+        .set_index('SKU_CODE')
+    )
     pe = pd.get_dummies(pf, columns=['Brand'])
     us = cosine_similarity(uim)
     isim = cosine_similarity(pe)
