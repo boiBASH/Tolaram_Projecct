@@ -13,8 +13,9 @@ st.markdown("<h1 style='text-align: center;'>📊 Sales Intelligence & Product R
 # Load and preprocess data
 def load_data():
     df = pd.read_csv("Data Analysis - Sample File.csv")
+    df['Delivered_date'] = pd.to_datetime(df['Delivered_date'], errors='coerce', dayfirst=True)
     df['Redistribution Value'] = df['Redistribution Value'].str.replace(',', '', regex=False).astype(float)
-    df['Delivered_date'] = pd.to_datetime(df['Delivered_date'], errors='coerce')
+    df['Delivered Qty'] = df['Delivered Qty'].fillna(0)
     df['Month'] = df['Delivered_date'].dt.to_period('M')
     return df
 
@@ -26,6 +27,7 @@ section = st.sidebar.radio("Choose a Section", [
     "📊 EDA Overview",
     "📉 Drop Detection",
     "👤 Customer Profiling",
+    "👥 Customer Profiling (In-depth)",
     "🔁 Cross-Selling",
     "🔗 Brand Correlation",
     "🥇 Buyer Analysis",
@@ -59,21 +61,18 @@ elif section == "📉 Drop Detection":
 
 elif section == "👤 Customer Profiling":
     st.subheader("Customer RFM, Next Purchase & Discounts")
-    # RFM calculation
     max_date = DF['Delivered_date'].max()
     last = DF.groupby('Customer_Phone')['Delivered_date'].max()
     recency = (max_date - last).dt.days
     freq = DF.groupby('Customer_Phone')['Order_Id'].nunique()
     val = DF.groupby(['Customer_Phone','Order_Id'])['Redistribution Value'].sum().reset_index()
     monetary = val.groupby('Customer_Phone')['Redistribution Value'].mean()
-    # Assemble RFM DataFrame
     rfm = pd.DataFrame({
         'Customer_Phone': recency.index,
         'Recency': recency.values,
         'Frequency': freq.values,
         'Monetary': monetary.values
     })
-    # Quantiles for segmentation and discounts
     q = {col: rfm[col].quantile([0.25,0.5,0.75]).to_dict() for col in ['Recency','Frequency','Monetary']}
     def assign_segment(row):
         if row['Recency'] <= q['Recency'][0.25] and row['Frequency'] >= q['Frequency'][0.75] and row['Monetary'] >= q['Monetary'][0.75]: return 'Best Customers'
@@ -82,13 +81,11 @@ elif section == "👤 Customer Profiling":
         if q['Recency'][0.25] < row['Recency'] <= q['Recency'][0.75] and row['Frequency'] >= q['Frequency'][0.5]: return 'Potential Loyalists'
         return 'Others'
     rfm['Segment'] = rfm.apply(assign_segment, axis=1)
-    # Discount logic
     med_best = rfm.loc[rfm['Segment']=='Best Customers','Monetary'].median()
     med_loyal = rfm.loc[rfm['Segment']=='Potential Loyalists','Monetary'].median()
     rfm['Recommended_Discount'] = 0
     rfm.loc[(rfm['Segment']=='Best Customers')&(rfm['Monetary']<med_best),'Recommended_Discount']=10
     rfm.loc[(rfm['Segment']=='Potential Loyalists')&(rfm['Monetary']<med_loyal),'Recommended_Discount']=5
-    # Next purchase prediction
     grouped = DF.sort_values(['Customer_Phone','Delivered_date']).groupby('Customer_Phone')
     last_dates = grouped['Delivered_date'].last().rename('last_purchase_date')
     inter_days = grouped['Delivered_date'].diff().dt.days
@@ -99,7 +96,6 @@ elif section == "👤 Customer Profiling":
     idx = freq_df.groupby('Customer_Phone')['count'].idxmax()
     likely = freq_df.loc[idx, ['Customer_Phone','SKU_Code']].rename(columns={'SKU_Code':'likely_next_SKU'})
     next_df = summary.reset_index().merge(likely, on='Customer_Phone')
-    # Interactive display
     ids = rfm['Customer_Phone'].tolist()
     sel = st.selectbox("Select Customer Phone:", ids)
     cust = rfm[rfm['Customer_Phone']==sel].iloc[0]
@@ -109,20 +105,22 @@ elif section == "👤 Customer Profiling":
     st.metric("Segment",cust['Segment'])
     if cust['Recommended_Discount']>0:
         st.metric("Recommended Discount",f"{cust['Recommended_Discount']}%")
-    # Next purchase metrics
     np_rec = next_df[next_df['Customer_Phone']==sel].iloc[0]
-        # Format date as string for display
     st.metric("Next Purchase Date", np_rec['predicted_next_purchase'].strftime("%Y-%m-%d"))
     st.write(f"Likely Next SKU: {np_rec['likely_next_SKU']}")
 
+elif section == "👥 Customer Profiling (In-depth)":
+    st.subheader("In-depth Customer Profiling & Cleansing Summary")
+    st.write("Sample of Cleaned Data:")
+    st.dataframe(DF[['Customer_Phone', 'Delivered_date', 'SKU_Code', 'Delivered Qty', 'Redistribution Value']].head(10))
+    st.write("Data Types After Cleansing:")
+    st.code(DF.dtypes.astype(str).to_string())
+
 elif section == "🔁 Cross-Selling":
     st.subheader("Brand Switching Patterns (Top 3 Alternatives)")
-    # Identify last purchase month per customer-brand
     last_purchase = DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
-    # Customers who dropped a brand this period
     latest = DF['Month'].max()
     dropped = last_purchase[last_purchase['Month']<latest]
-    # Subsequent different-brand purchases
     merged = DF.merge(dropped,on='Customer_Phone',suffixes=('','_dropped'))
     switched = merged[(merged['Month']>merged['Month_dropped'])&(merged['Brand']!=merged['Brand_dropped'])]
     switches = switched.groupby(['Brand_dropped','Brand'])['Order_Id'].count().reset_index(name='Switch_Count')
