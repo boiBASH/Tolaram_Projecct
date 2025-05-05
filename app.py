@@ -9,7 +9,7 @@ from PIL import Image
 # --- Load and preprocess sales data ---
 @st.cache_data
 def load_sales_data():
-    df = pd.read_csv("cleaned_data_analysis.csv", low_memory=False)
+    df = pd.read_csv("cleaned_data_analysis.csv")
     df['Redistribution Value'] = (
         df['Redistribution Value']
           .str.replace(',', '', regex=False)
