@@ -28,22 +28,39 @@ def load_sales_data():
 def load_model_preds():
     preds = pd.read_csv(
         "sku_predictions.csv",
-        parse_dates=["last_purchase_date", "pred_next_date"]
+        parse_dates=["last_purchase_date", "pred_next_date"],
     )
-    # Drop unnecessary columns
-    cols_to_drop = [c for c in ["last_purchase_date","probability","suggestion"] if c in preds.columns]
-    preds = preds.drop(columns=cols_to_drop)
+    # Rename raw columns to user-friendly names
     preds = preds.rename(columns={
         "pred_next_date":     "Next Purchase Date",
         "pred_spend":          "Expected Spend",
-        "pred_qty":            "Expected Quantity"
+        "pred_qty":            "Expected Quantity",
+        "probability":         "Probability"
     })
+    # Convert date column to date only
     preds["Next Purchase Date"] = preds["Next Purchase Date"].dt.date
+    # Format numeric columns
     preds["Expected Spend"] = preds["Expected Spend"].round(0).astype(int)
     preds["Expected Quantity"] = preds["Expected Quantity"].round(0).astype(int)
+    # Probability to percent, one decimal
+    preds["Probability"] = (preds["Probability"] * 100).round(1)
+    # Suggestion logic based on probability
+    def suggest(row):
+        p = row["Probability"]
+        if p >= 70:
+            return "Follow-up/Alert"
+        elif p >= 50:
+            return "Cross Sell"
+        else:
+            return "Discount"
+    preds["Suggestion"] = preds.apply(suggest, axis=1)
+    # Drop raw date column if still present
+    if "last_purchase_date" in preds.columns:
+        preds = preds.drop(columns=["last_purchase_date"])
     return preds
 
 DF = load_sales_data()
+PRED_DF = load_model_preds()()
 PRED_DF = load_model_preds()
 
 # --- Analysis functions ---
