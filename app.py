@@ -37,6 +37,15 @@ def load_model_preds():
         "probability":         "Probability"
     })
     preds["Probability"] = (preds["Probability"] * 100).round(2)
+    # Suggestion logic
+    def suggest(row):
+        if row["Expected Spend"] > 5000:
+            return "Offer Discount"
+        elif row["Expected Quantity"] > 10:
+            return "Free Gift"
+        else:
+            return "Thank You Message"
+    preds["Suggestion"] = preds.apply(suggest, axis=1)
     return preds
 
 # Load datasets
