@@ -11,7 +11,7 @@ from PIL import Image
 def load_data():
     df = pd.read_csv("cleaned_data_analysis.csv")
     df['Redistribution Value'] = df['Redistribution Value'].str.replace(',', '', regex=False).astype(float)
-    df['Delivered_date'] = pd.to_datetime(df['Delivered_date'], errors='coerce')
+    df['Delivered_date'] = pd.to_datetime(df['Delivered_date'], errors='coerce', dayfirst=True)
     df['Month'] = df['Delivered_date'].dt.to_period('M')
     df['Delivered Qty'] = df['Delivered Qty'].fillna(0)
     df['Total_Amount_Spent'] = df['Redistribution Value'] * df['Delivered Qty']
