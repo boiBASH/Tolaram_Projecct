@@ -11,7 +11,9 @@ from PIL import Image
 def load_sales_data():
     df = pd.read_csv("cleaned_data_analysis.csv")
     df['Redistribution Value'] = (
-        df['Redistribution Value'].str.replace(',', '', regex=False).astype(float)
+        df['Redistribution Value']
+          .str.replace(',', '', regex=False)
+          .astype(float)
     )
     df['Delivered_date'] = pd.to_datetime(
         df['Delivered_date'], errors='coerce', dayfirst=True
@@ -58,6 +60,7 @@ DF      = load_sales_data()
 PRED_DF = load_model_preds()
 
 # --- Analysis functions ---
+
 def analyze_customer_purchases(customer_phone):
     df = DF[DF['Customer_Phone'] == customer_phone].copy()
     if df.empty:
@@ -66,22 +69,32 @@ def analyze_customer_purchases(customer_phone):
     skus = df['SKU_Code'].unique().tolist()
     last_purchase = (
         df.groupby('SKU_Code')['Delivered_date']
-          .max().dt.strftime('%Y-%m-%d').to_dict()
+          .max()
+          .dt.strftime('%Y-%m-%d')
+          .to_dict()
     )
     monthly_qty = (
         df.groupby(['SKU_Code','Month'])['Delivered Qty']
-          .sum().groupby('SKU_Code').mean().round(2).to_dict()
+          .sum()
+          .groupby('SKU_Code')
+          .mean()
+          .round(2)
+          .to_dict()
     )
     avg_interval = {}
     for sku, grp in df.groupby('SKU_Code'):
         dates = grp['Delivered_date'].drop_duplicates().sort_values()
         if len(dates) > 1:
-            avg_interval[sku] = round((dates.diff().dt.days.dropna()/30.44).mean(),2)
+            avg_interval[sku] = round((dates.diff().dt.days.dropna() / 30.44).mean(), 2)
         else:
             avg_interval[sku] = "One"
     monthly_spend = (
         df.groupby(['SKU_Code','Month'])['Total_Amount_Spent']
-          .sum().groupby('SKU_Code').mean().round(2).to_dict()
+          .sum()
+          .groupby('SKU_Code')
+          .mean()
+          .round(2)
+          .to_dict()
     )
     report = {
         'Customer Phone': customer_phone,
@@ -91,12 +104,13 @@ def analyze_customer_purchases(customer_phone):
     }
     for sku in skus:
         report['Purchase Summary by SKU'][sku] = {
-            'Last Purchase Date': last_purchase.get(sku,'N/A'),
-            'Avg Monthly Quantity': monthly_qty.get(sku,0),
-            'Avg Purchase Interval (Months)': avg_interval.get(sku,'N/A'),
-            'Avg Monthly Spend': monthly_spend.get(sku,0)
+            'Last Purchase Date': last_purchase.get(sku, 'N/A'),
+            'Avg Monthly Quantity': monthly_qty.get(sku, 0),
+            'Avg Purchase Interval (Months)': avg_interval.get(sku, 'N/A'),
+            'Avg Monthly Spend': monthly_spend.get(sku, 0)
         }
     return report
+
 
 def predict_next_purchases(customer_phone):
     df = DF[DF['Customer_Phone'] == customer_phone].copy()
@@ -108,129 +122,166 @@ def predict_next_purchases(customer_phone):
     last_purchase = df.groupby('SKU_Code')['Delivered_date'].max()
     recency_days = (pd.Timestamp.today() - last_purchase).dt.days
     score_df = pd.DataFrame({
-        'Frequency':freq,'Total_Quantity':qty,'Total_Spend':spend,'Recency':recency_days
+        'Frequency':      freq,
+        'Total_Quantity': qty,
+        'Total_Spend':    spend,
+        'Recency':        recency_days
     }).fillna(0)
     total_freq = score_df['Frequency'].sum() or 1
-    score_df['Frequency_Score'] = score_df['Frequency']/total_freq
+    score_df['Frequency_Score'] = score_df['Frequency'] / total_freq
     max_recency = score_df['Recency'].max() or 1
-    score_df['Recency_Score'] = 1 - (score_df['Recency']/max_recency)
+    score_df['Recency_Score'] = 1 - (score_df['Recency'] / max_recency)
     total_qty = score_df['Total_Quantity'].sum() or 1
     score_df['Combined_Score'] = (
-        0.5*score_df['Frequency_Score']+
-        0.3*(score_df['Total_Quantity']/total_qty)+
-        0.2*score_df['Recency_Score']
+        0.5 * score_df['Frequency_Score'] +
+        0.3 * (score_df['Total_Quantity'] / total_qty) +
+        0.2 * score_df['Recency_Score']
     )
-    score_df['Probability (%)'] = (score_df['Combined_Score']/score_df['Combined_Score'].sum()*100).round(2)
-    avg_qty = df.groupby(['SKU_Code','Month'])['Delivered Qty']
-                 .sum().groupby('SKU_Code').mean().round(2)
-    avg_spend = df.groupby(['SKU_Code','Month'])['Total_Amount_Spent']
-                    .sum().groupby('SKU_Code').mean().round(2)
+    score_df['Probability (%)'] = (
+        score_df['Combined_Score'] / score_df['Combined_Score'].sum() * 100
+    ).round(2)
+    avg_qty = (
+        df.groupby(['SKU_Code','Month'])['Delivered Qty']
+          .sum()
+          .groupby('SKU_Code')
+          .mean()
+          .round(2)
+    )
+    avg_spend = (
+        df.groupby(['SKU_Code','Month'])['Total_Amount_Spent']
+          .sum()
+          .groupby('SKU_Code')
+          .mean()
+          .round(2)
+    )
     score_df['Expected Quantity'] = avg_qty.round(0).astype(int)
     score_df['Expected Spend']    = avg_spend.round(0).astype(int)
     def suggest_heuristic(row):
-        prob=row['Probability (%)']
-        if prob>=70: return 'Follow-up/Alert'
-        elif prob>=50: return 'Cross Sell'
-        else: return 'Discount'
-    score_df['Suggestion'] = score_df.apply(suggest_heuristic,axis=1)
+        prob = row['Probability (%)']
+        if prob >= 70:
+            return 'Follow-up/Alert'
+        elif prob >= 50:
+            return 'Cross Sell'
+        else:
+            return 'Discount'
+    score_df['Suggestion'] = score_df.apply(suggest_heuristic, axis=1)
     return (
-        score_df.sort_values('Probability (%)',ascending=False)
+        score_df.sort_values('Probability (%)', ascending=False)
                 .head(3)
-                .reset_index()[['SKU_Code','Expected Quantity','Expected Spend','Probability (%)','Suggestion']]
+                .reset_index()[[
+                    'SKU_Code',
+                    'Expected Quantity',
+                    'Expected Spend',
+                    'Probability (%)',
+                    'Suggestion'
+                ]]
     )
 
 # --- Streamlit UI ---
-logo=Image.open("logo.png")
-st.image(logo,width=120)
-st.markdown("<h1 style='text-align: center;'>📊 Sales Intelligence & Product Recommendation Dashboard</h1>",unsafe_allow_html=True)
-section=st.sidebar.radio("Choose a Section",[
-    "📊 EDA Overview","📉 Drop Detection","👤 Customer Profiling",
-    "👤 Customer Profiling (Model Prediction)","🔁 Cross-Selling","🔗 Brand Correlation",
-    "🥇 Buyer Analysis","📈 Retention & Moving Average","🤖 Recommender System"
-])
-df_monthly=DF.groupby('Month')['Redistribution Value'].sum()
-if section=="📊 EDA Overview":
+logo = Image.open("logo.png")
+st.image(logo, width=120)
+st.markdown(
+    "<h1 style='text-align: center;'>📊 Sales Intelligence & Product Recommendation Dashboard</h1>",
+    unsafe_allow_html=True
+)
+section = st.sidebar.radio(
+    "Choose a Section",
+    [
+        "📊 EDA Overview",
+        "📉 Drop Detection",
+        "👤 Customer Profiling",
+        "👤 Customer Profiling (Model Prediction)",
+        "🔁 Cross-Selling",
+        "🔗 Brand Correlation",
+        "🥇 Buyer Analysis",
+        "📈 Retention & Moving Average",
+        "🤖 Recommender System"
+    ]
+)
+
+df_monthly = DF.groupby('Month')['Redistribution Value'].sum()
+
+if section == "📊 EDA Overview":
     st.subheader("Sales Trends Over Time")
     st.line_chart(df_monthly.to_timestamp())
     st.subheader("Top-Selling Products")
     st.bar_chart(DF.groupby('SKU_Code')['Redistribution Value'].sum().nlargest(10))
     st.subheader("Top Brands")
     st.bar_chart(DF.groupby('Brand')['Redistribution Value'].sum().nlargest(10))
-elif section=="📉 Drop Detection":
+elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
-    bm=DF.groupby(['Brand','Month'])['Redistribution Value'].sum().unstack(fill_value=0)
-    mom=bm.pct_change(axis=1)*100
-    flags=mom< -30
-    disp=mom.round(1).astype(str)
-    disp[flags]+="% 🔻"
-    disp[~flags]=""
+    bm = DF.groupby(['Brand','Month'])['Redistribution Value'].sum().unstack(fill_value=0)
+    mom = bm.pct_change(axis=1) * 100
+    flags = mom < -30
+    disp = mom.round(1).astype(str)
+    disp[flags] += "% 🔻"
+    disp[~flags] = ""
     st.dataframe(disp)
-elif section=="👤 Customer Profiling":
+elif section == "👤 Customer Profiling":
     st.subheader("Customer Purchase Deep-Dive")
-    cust=st.selectbox("Select Customer Phone:",sorted(DF['Customer_Phone'].unique()))
+    cust = st.selectbox("Select Customer Phone:", sorted(DF['Customer_Phone'].unique()))
     if cust:
-        report=analyze_customer_purchases(cust)
+        report = analyze_customer_purchases(cust)
         st.markdown(f"**Total Unique SKUs Bought:** {report['Total Unique SKUs Bought']}")
         st.markdown(f"**SKUs Bought:** {', '.join(report['SKUs Bought'])}")
-        sku_df=pd.DataFrame.from_dict(report['Purchase Summary by SKU'],orient='index')\
+        sku_df = pd.DataFrame.from_dict(report['Purchase Summary by SKU'], orient='index')\
             .rename_axis('SKU_Code').reset_index()
-        st.dataframe(sku_df,use_container_width=True)
-        pred_df=predict_next_purchases(cust)
+        st.dataframe(sku_df, use_container_width=True)
+        pred_df = predict_next_purchases(cust)
         # add % sign to Probability
-        pred_df['Probability (%)']=pred_df['Probability (%)'].map(lambda x:f"{x:.1f}%")
+        pred_df['Probability (%)'] = pred_df['Probability (%)'].map(lambda x: f"{x:.1f}%")
         st.subheader("Next-Purchase Predictions (Heuristic)")
-        st.dataframe(pred_df.set_index('SKU_Code'),use_container_width=True)
-elif section=="🔁 Cross-Selling":
+        st.dataframe(pred_df.set_index('SKU_Code'), use_container_width=True)
+elif section == "🔁 Cross-Selling":
     st.subheader("Brand Switching Patterns (Top 3 Alternatives)")
-    last_purchase=DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
-    latest=DF['Month'].max()
-    dropped=last_purchase[last_purchase['Month']<latest]
-    merged=DF.merge(dropped,on='Customer_Phone',suffixes=('','_dropped'))
-    switched=merged[(merged['Month']>merged['Month_dropped'])&(merged['Brand']!=merged['Brand_dropped'])]
-    switches=switched.groupby(['Brand_dropped','Brand'])['Order_Id'].count()\
+    last_purchase = DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
+    latest = DF['Month'].max()
+    dropped = last_purchase[last_purchase['Month'] < latest]
+    merged = DF.merge(dropped, on='Customer_Phone', suffixes=('','_dropped'))
+    switched = merged[(merged['Month'] > merged['Month_dropped']) & (merged['Brand'] != merged['Brand_dropped'])]
+    switches = switched.groupby(['Brand_dropped','Brand'])['Order_Id'].count()\
         .reset_index(name='Switch_Count')
-    top3=switches.sort_values(['Brand_dropped','Switch_Count'],ascending=[True,False])\
+    top3 = switches.sort_values(['Brand_dropped','Switch_Count'], ascending=[True,False])\
         .groupby('Brand_dropped').head(3).reset_index(drop=True)
     st.dataframe(top3)
-elif section=="🔗 Brand Correlation":
+elif section == "🔗 Brand Correlation":
     st.subheader("Brand Correlation Matrix")
-    ub=DF.groupby(['Customer_Phone','Brand'])['Order_Id'].count().unstack(fill_value=0)
+    ub = DF.groupby(['Customer_Phone','Brand'])['Order_Id'].count().unstack(fill_value=0)
     st.dataframe(ub.corr().round(2))
-elif section=="🥇 Buyer Analysis":
+elif section == "🥇 Buyer Analysis":
     st.subheader("Top & Bottom Buyers (Latest Month)")
-    latest_m=DF['Month'].max()
-    bd=DF[DF['Month']==latest_m].groupby('Customer_Phone')['Redistribution Value'].sum().reset_index()
+    latest_m = DF['Month'].max()
+    bd = DF[DF['Month'] == latest_m].groupby('Customer_Phone')['Redistribution Value'].sum().reset_index()
     st.write("Top Buyers")
-    st.dataframe(bd.nlargest(10,'Redistribution Value'))
+    st.dataframe(bd.nlargest(10, 'Redistribution Value'))
     st.write("Bottom Buyers")
-    st.dataframe(bd.nsmallest(10,'Redistribution Value'))
-elif section=="📈 Retention & Moving Average":
+    st.dataframe(bd.nsmallest(10, 'Redistribution Value'))
+elif section == "📈 Retention & Moving Average":
     st.subheader("3-Month MA of Orders")
-    ords=DF.groupby('Month')['Order_Id'].nunique()
+    ords = DF.groupby('Month')['Order_Id'].nunique()
     st.line_chart(ords.rolling(3).mean())
-elif section=="🤖 Recommender System":
+elif section == "🤖 Recommender System":
     st.subheader("Hybrid Recommendations")
-    uim=DF.pivot_table(index='Customer_Phone',columns='SKU_Code',values='Redistribution Value',aggfunc='sum').fillna(0)
-    pf=DF[['SKU_Code','Brand']].drop_duplicates().set_index('SKU_Code')
-    pe=pd.get_dummies(pf,columns=['Brand'])
-    us=cosine_similarity(uim)
-    isim=cosine_similarity(pe)
-    us_df=pd.DataFrame(us,index=uim.index,columns=uim.index)
-    is_df=pd.DataFrame(isim,index=pe.index,columns=pe.index)
-    sel_c=st.selectbox("Select Customer for Recommendations:",uim.index)
+    uim = DF.pivot_table(index='Customer_Phone', columns='SKU_Code', values='Redistribution Value', aggfunc='sum').fillna(0)
+    pf = DF[['SKU_Code','Brand']].drop_duplicates().set_index('SKU_Code')
+    pe = pd.get_dummies(pf, columns=['Brand'])
+    us = cosine_similarity(uim)
+    isim = cosine_similarity(pe)
+    us_df = pd.DataFrame(us, index=uim.index, columns=uim.index)
+    is_df = pd.DataFrame(isim, index=pe.index, columns=pe.index)
+    sel_c = st.selectbox("Select Customer for Recommendations:", uim.index)
     if st.button("Show Recommendations"):
-        b=uim.loc[sel_c]
-        w=uim.T.dot(us_df[sel_c]).div(us_df[sel_c].sum())
-        bi=b[b>0].index
-        cs=is_df[bi].sum(axis=1)
-        fs=0.5*w+0.5*cs
-        fs=fs.drop(bi,errors='ignore')
+        b = uim.loc[sel_c]
+        w = uim.T.dot(us_df[sel_c]).div(us_df[sel_c].sum())
+        bi = b[b > 0].index
+        cs = is_df[bi].sum(axis=1)
+        fs = 0.5 * w + 0.5 * cs
+        fs = fs.drop(bi, errors='ignore')
         st.dataframe(fs.nlargest(5).reset_index().rename(columns={0:'Score','index':'Recommended SKU'}))
-elif section=="👤 Customer Profiling (Model Prediction)":
+elif section == "👤 Customer Profiling (Model Prediction)":
     st.subheader("Next-Purchase Model Predictions")
-    cust=st.selectbox("Select Customer Phone:",sorted(PRED_DF['Customer_Phone'].unique()))
+    cust = st.selectbox("Select Customer Phone:", sorted(PRED_DF['Customer_Phone'].unique()))
     if cust:
-        pred_df=PRED_DF[PRED_DF['Customer_Phone']==cust].drop(columns="Customer_Phone").set_index("SKU_Code")
-        # add % sign to Probability column
-        pred_df['Probability']=pred_df['Probability'].map(lambda x:f"{x:.1f}%")
-        st.dataframe(pred_df,use_container_width=True)
+        pred_df = PRED_DF[PRED_DF['Customer_Phone'] == cust].drop(columns="Customer_Phone").set_index("SKU_Code")
+        pred_df['Probability'] = pred_df['Probability'].map(lambda x: f"{x:.1f}%")
+        st.dataframe(pred_df, use_container_width=True)
