@@ -93,14 +93,11 @@ def predict_next_purchases(customer_phone):
         'Expected Quantity':    avg_qty,
         'Expected Spend':       avg_spend
     }).dropna(subset=['Avg Interval Days'])
-    # ensure SKU_Code is name of index before reset
-    result = (
-        score_df
-        .sort_values('Avg Interval Days')
-        .head(3)[['Next Purchase Date','Expected Spend','Expected Quantity']] if 'Next Purchase Date' in score_df.columns else None
-    )
-    # actually compute Next Purchase Date
-    score_df['Next Purchase Date'] = pd.to_datetime(score_df['Last Purchase Date']) + pd.to_timedelta(score_df['Avg Interval Days'], unit='D')
+    # compute Next Purchase Date and strip time
+    score_df['Next Purchase Date'] = (
+        pd.to_datetime(score_df['Last Purchase Date']) +
+        pd.to_timedelta(score_df['Avg Interval Days'], unit='D')
+    ).dt.date
     result = (
         score_df
         .sort_values('Avg Interval Days')
