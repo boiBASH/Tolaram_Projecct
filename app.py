@@ -9,7 +9,7 @@ from PIL import Image
 # --- Load and preprocess data ---
 @st.cache_data
 def load_data():
-    df = pd.read_csv("Data Analysis - Sample File.csv")
+    df = pd.read_csv("cleaned_data_analysis.csv")
     df['Redistribution Value'] = df['Redistribution Value'].str.replace(',', '', regex=False).astype(float)
     df['Delivered_date'] = pd.to_datetime(df['Delivered_date'], errors='coerce')
     df['Month'] = df['Delivered_date'].dt.to_period('M')
