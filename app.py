@@ -60,7 +60,6 @@ DF      = load_sales_data()
 PRED_DF = load_model_preds()
 
 # --- Analysis functions ---
-
 def analyze_customer_purchases(customer_phone):
     df = DF[DF['Customer_Phone'] == customer_phone].copy()
     if df.empty:
@@ -104,79 +103,56 @@ def analyze_customer_purchases(customer_phone):
     }
     for sku in skus:
         report['Purchase Summary by SKU'][sku] = {
-            'Last Purchase Date': last_purchase.get(sku, 'N/A'),
-            'Avg Monthly Quantity': monthly_qty.get(sku, 0),
+            'Last Purchase Date':           last_purchase.get(sku, 'N/A'),
+            'Avg Monthly Quantity':         monthly_qty.get(sku, 0),
             'Avg Purchase Interval (Months)': avg_interval.get(sku, 'N/A'),
-            'Avg Monthly Spend': monthly_spend.get(sku, 0)
+            'Avg Monthly Spend':            monthly_spend.get(sku, 0)
         }
     return report
-
 
 def predict_next_purchases(customer_phone):
     df = DF[DF['Customer_Phone'] == customer_phone].copy()
     if df.empty:
         return pd.DataFrame()
-    freq = df.groupby('SKU_Code')['Delivered_date'].nunique()
-    qty = df.groupby('SKU_Code')['Delivered Qty'].sum()
-    spend = df.groupby('SKU_Code')['Total_Amount_Spent'].sum()
-    last_purchase = df.groupby('SKU_Code')['Delivered_date'].max()
-    recency_days = (pd.Timestamp.today() - last_purchase).dt.days
-    score_df = pd.DataFrame({
-        'Frequency':      freq,
-        'Total_Quantity': qty,
-        'Total_Spend':    spend,
-        'Recency':        recency_days
-    }).fillna(0)
-    total_freq = score_df['Frequency'].sum() or 1
-    score_df['Frequency_Score'] = score_df['Frequency'] / total_freq
-    max_recency = score_df['Recency'].max() or 1
-    score_df['Recency_Score'] = 1 - (score_df['Recency'] / max_recency)
-    total_qty = score_df['Total_Quantity'].sum() or 1
-    score_df['Combined_Score'] = (
-        0.5 * score_df['Frequency_Score'] +
-        0.3 * (score_df['Total_Quantity'] / total_qty) +
-        0.2 * score_df['Recency_Score']
-    )
-    score_df['Probability (%)'] = (
-        score_df['Combined_Score'] / score_df['Combined_Score'].sum() * 100
-    ).round(2)
-    avg_qty = (
-        df.groupby(['SKU_Code','Month'])['Delivered Qty']
-          .sum()
-          .groupby('SKU_Code')
-          .mean()
-          .round(2)
-    )
-    avg_spend = (
-        df.groupby(['SKU_Code','Month'])['Total_Amount_Spent']
-          .sum()
-          .groupby('SKU_Code')
-          .mean()
-          .round(2)
-    )
-    score_df['Expected Quantity'] = avg_qty.round(0).astype(int)
-    score_df['Expected Spend']    = avg_spend.round(0).astype(int)
-    def suggest_heuristic(row):
-        prob = row['Probability (%)']
-        if prob >= 70:
-            return 'Follow-up/Alert'
-        elif prob >= 50:
-            return 'Cross Sell'
-        else:
-            return 'Discount'
-    score_df['Suggestion'] = score_df.apply(suggest_heuristic, axis=1)
-    return (
-        score_df.sort_values('Probability (%)', ascending=False)
-                .head(3)
-                .reset_index()[[
-                    'SKU_Code',
-                    'Expected Quantity',
-                    'Expected Spend',
-                    'Probability (%)',
-                    'Suggestion'
-                ]]
-    )
 
+    # aggregates
+    last_purchase = df.groupby('SKU_Code')['Delivered_date'].max()
+    # compute avg interval in days
+    avg_interval_days = {}
+    for sku, grp in df.groupby('SKU_Code'):
+        dates = grp['Delivered_date'].drop_duplicates().sort_values()
+        if len(dates) > 1:
+            avg_interval_days[sku] = int((dates.diff().dt.days.dropna().mean()))
+        else:
+            avg_interval_days[sku] = np.nan
+
+    # expected metrics
+    avg_qty   = df.groupby(['SKU_Code','Month'])['Delivered Qty']\
+                   .sum().groupby('SKU_Code').mean().round(0)
+    avg_spend = df.groupby(['SKU_Code','Month'])['Total_Amount_Spent']\
+                   .sum().groupby('SKU_Code').mean().round(0)
+
+    # build DataFrame
+    score_df = pd.DataFrame({
+        'Last Purchase Date':   last_purchase.dt.date,
+        'Avg Interval Days':    pd.Series(avg_interval_days),
+        'Expected Quantity':    avg_qty,
+        'Expected Spend':       avg_spend
+    }).dropna(subset=['Avg Interval Days'])
+
+    score_df['Next Purchase Date'] = (
+        pd.to_datetime(score_df['Last Purchase Date']) +
+        pd.to_timedelta(score_df['Avg Interval Days'], unit='D')
+    ).dt.date
+
+    # return top 3 by shortest interval
+    return (
+        score_df
+        .sort_values('Avg Interval Days')
+        .head(3)
+        [['Next Purchase Date', 'Expected Spend','Expected Quantity']]
+        .reset_index()   # SKU_Code becomes a column
+    )
 # --- Streamlit UI ---
 logo = Image.open("logo.png")
 st.image(logo, width=120)
