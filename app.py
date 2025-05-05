@@ -60,7 +60,6 @@ def load_model_preds():
     return preds
 
 DF = load_sales_data()
-PRED_DF = load_model_preds()()
 PRED_DF = load_model_preds()
 
 # --- Analysis functions ---
