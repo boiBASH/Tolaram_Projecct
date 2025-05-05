@@ -207,5 +207,16 @@ elif section == "👤 Customer Profiling (Model Prediction)":
     st.subheader("Next-Purchase Model Predictions")
     cust = st.selectbox("Select Customer Phone:", sorted(PRED_DF['Customer_Phone'].unique()))
     if cust:
-        pred_df = PRED_DF[PRED_DF['Customer_Phone'] == cust].drop(columns=["Customer_Phone"]).set_index("SKU_Code")
+        # Filter for selected customer and keep Last Purchase Date
+        pred_df = (
+            PRED_DF[PRED_DF['Customer_Phone'] == cust]
+            .drop(columns=["Customer_Phone"], errors='ignore')
+            .set_index("SKU_Code")
+        )
+        # Ensure Last Purchase Date is formatted as date-only string
+        if "Last Purchase Date" in pred_df.columns:
+            pred_df["Last Purchase Date"] = pd.to_datetime(pred_df["Last Purchase Date"]).dt.date
+        # Format Probability as percentage string
+        if "Probability" in pred_df.columns:
+            pred_df["Probability"] = pred_df["Probability"].map(lambda x: f"{x:.1f}%")
         st.dataframe(pred_df, use_container_width=True)
