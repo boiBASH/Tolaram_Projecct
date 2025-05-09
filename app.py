@@ -216,8 +216,13 @@ if section == "📊 EDA Overview":
 elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
     bm = DF.groupby(['Brand','Month'])['Redistribution Value'].sum().unstack(fill_value=0)
-    st.dataframe(bm.pct_change(axis=1).multiply(100).round(1).replace({np.nan: ""}))
-
+    mom = bm.pct_change(axis=1) * 100
+    flags = mom < -30
+    disp = mom.round(1).astype(str)
+    disp[flags] += "% 🔻"
+    disp[~flags] = ""
+    st.dataframe(disp)
+    
 # --- Customer Profiling ---
 elif section == "👤 Customer Profiling":
     st.subheader("Customer Purchase Deep-Dive")
