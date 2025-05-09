@@ -341,31 +341,41 @@ if section == "📊 EDA Overview":
                  DF["Delivered Qty"].sum() * 100).nlargest(10)
         st.bar_chart(share)
 
-    # 10) Top 10 Most Frequently Bought SKU Pairs
+        # 10) Top 10 Most Frequently Bought SKU Pairs
     with tabs[9]:
         st.markdown("#### Top 10 SKU Pairs (Bought Together)")
-        # Build a Counter of pairs
+
         from itertools import combinations
         from collections import Counter
 
         df_p = DF.copy()
-        df_p["Order_ID"] = df_p["Customer_Phone"].astype(str) + "_" + df_p["Delivered_date"].astype(str)
-        pair_sets = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
+        df_p["Order_ID"] = (
+            df_p["Customer_Phone"].astype(str)
+            + "_"
+            + df_p["Delivered_date"].astype(str)
+        )
 
+        # Build a counter of SKU‐pairs
+        pair_sets = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
         cnt = Counter()
         for s in pair_sets:
             if len(s) > 1:
                 for pair in combinations(sorted(s), 2):
                     cnt[pair] += 1
 
-        # Convert to DataFrame with string labels
-        pair_series = pd.Series(cnt)
-        top_pairs = pair_series.nlargest(10)
+        # Turn into DataFrame with proper names in one go
+        top_pairs = pd.Series(cnt).nlargest(10)
+        df_pairs = (
+            top_pairs
+            .rename_axis("SKU Pair")
+            .reset_index(name="Count")
+        )
 
-        df_pairs = top_pairs.reset_index()
-        df_pairs.columns = ["SKU Pair", "Count"]
-        # Stringify the tuple for display
-        df_pairs["SKU Pair"] = df_pairs["SKU Pair"].map(lambda t: f"{t[0]} & {t[1]}")
+        # Format the tuple into a string
+        df_pairs["SKU Pair"] = df_pairs["SKU Pair"]\
+            .apply(lambda t: f"{t[0]} & {t[1]}")
+
+        # Index by that label so bar_chart uses it
         df_pairs = df_pairs.set_index("SKU Pair")
 
         st.bar_chart(df_pairs)
