@@ -200,9 +200,12 @@ if section == "📊 EDA Overview":
         df_p["Order_ID"] = df_p["Customer_Phone"].astype(str) + "_" + df_p["Delivered_date"].astype(str)
         for s in df_p.groupby("Order_ID")["SKU_Code"].apply(set):
             if len(s) > 1:
-                for pair in combinations(sorted(s), 2): cnt[pair] += 1
+                for pair in combinations(sorted(s), 2):
+                    cnt[pair] += 1
         top_pairs = pd.Series(cnt).nlargest(10)
-        st.bar_chart(top_pairs)
+        df_pairs = top_pairs.to_frame(name="Count")
+        df_pairs.index = df_pairs.index.map(lambda t: f"{t[0]} & {t[1]}")
+        st.bar_chart(df_pairs)
     # 11) SKU Variety
     with tabs[10]:
         sku_var = DF.groupby("Customer_Phone")["SKU_Code"].nunique()
