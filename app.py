@@ -225,16 +225,46 @@ if section == "📊 EDA Overview":
         "SKUs Trend","Qty vs Revenue","Avg Order Value","Lifetime Value",
         "SKU Share %","SKU Pairs"
     ])
-    st.pyplot(plot_top_skus_by_value(DF), use_container_width=True, key="r")
-    with tabs[1]: st.pyplot(plot_top_skus_by_qty(DF), use_container_width=True)
-    with tabs[2]: st.pyplot(plot_repeat_vs_one_time(DF), use_container_width=True)
-    with tabs[3]: st.pyplot(plot_monthly_top5_buyers(DF), use_container_width=True)
-    with tabs[4]: st.pyplot(plot_monthly_top5_skus(DF), use_container_width=True)
-    with tabs[5]: st.pyplot(plot_dual_axis_quantity_revenue(DF), use_container_width=True)
-    with tabs[6]: st.pyplot(plot_top_customers_avg_order_value(DF), use_container_width=True)
-    with tabs[7]: st.pyplot(plot_top_customers_lifetime_value(DF), use_container_width=True)
-    with tabs[8]: st.pyplot(plot_sku_concentration_pct(DF), use_container_width=True)
-    with tabs[9]: st.pyplot(plot_sku_pairs(DF), use_container_width=True)
+
+    with tabs[0]:
+        fig = plot_top_skus_by_value(DF)
+        st.pyplot(fig)
+
+    with tabs[1]:
+        fig = plot_top_skus_by_qty(DF)
+        st.pyplot(fig)
+
+    with tabs[2]:
+        fig = plot_repeat_vs_one_time(DF)
+        st.pyplot(fig)
+
+    with tabs[3]:
+        fig = plot_monthly_top5_buyers(DF)
+        st.pyplot(fig)
+
+    with tabs[4]:
+        fig = plot_monthly_top5_skus(DF)
+        st.pyplot(fig)
+
+    with tabs[5]:
+        fig = plot_dual_axis_quantity_revenue(DF)
+        st.pyplot(fig)
+
+    with tabs[6]:
+        fig = plot_top_customers_avg_order_value(DF)
+        st.pyplot(fig)
+
+    with tabs[7]:
+        fig = plot_top_customers_lifetime_value(DF)
+        st.pyplot(fig)
+
+    with tabs[8]:
+        fig = plot_sku_concentration_pct(DF)
+        st.pyplot(fig)
+
+    with tabs[9]:
+        fig = plot_sku_pairs(DF)
+        st.pyplot(fig)
 
 elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
