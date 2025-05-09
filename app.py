@@ -85,7 +85,6 @@ def analyze_customer_purchases(customer_phone):
         }
     return report
 
-
 def predict_next_purchases(customer_phone):
     df = DF[DF['Customer_Phone'] == customer_phone].copy()
     if df.empty:
@@ -122,8 +121,9 @@ st.sidebar.title("🚀 Sales Insights")
 section = st.sidebar.radio(
     "Select Section:",
     [
-        "📊 EDA Overview", "📉 Drop Detection", "👤 Customer Profiling", "👤 Model Predictions",
-        "🔁 Cross-Selling", "🔗 Brand Correlation", "🥇 Buyer Analysis", "📈 Retention", "🤖 Recommender"
+        "📊 EDA Overview", "📉 Drop Detection", "👤 Customer Profiling",
+        "👤 Model Predictions", "🔁 Cross-Selling", "🔗 Brand Correlation",
+        "🤖 Recommender"
     ]
 )
 st.title("📊 Sales Intelligence Dashboard")
@@ -134,7 +134,7 @@ if section == "📊 EDA Overview":
     tabs = st.tabs([
         "Top Revenue", "Top Quantity", "Buyer Types", "Buyer Trends",
         "SKU Trends", "Qty vs Revenue", "Avg Order Value", "Lifetime Value",
-        "SKU Share %", "SKU Pairs", "SKU Variety"
+        "SKU Share %", "SKU Pairs", "SKU Variety", "Buyer Analysis", "Retention"
     ])
     # 1) Top Revenue
     with tabs[0]:
@@ -200,10 +200,8 @@ if section == "📊 EDA Overview":
         df_p["Order_ID"] = df_p["Customer_Phone"].astype(str) + "_" + df_p["Delivered_date"].astype(str)
         for s in df_p.groupby("Order_ID")["SKU_Code"].apply(set):
             if len(s) > 1:
-                for pair in combinations(sorted(s), 2):
-                    cnt[pair] += 1
-        top_pairs = pd.Series(cnt).nlargest(10)
-        df_pairs = top_pairs.to_frame(name="Count")
+                for pair in combinations(sorted(s), 2): cnt[pair] += 1
+        df_pairs = pd.Series(cnt).nlargest(10).to_frame(name="Count")
         df_pairs.index = df_pairs.index.map(lambda t: f"{t[0]} & {t[1]}")
         st.bar_chart(df_pairs)
     # 11) SKU Variety
@@ -211,19 +209,25 @@ if section == "📊 EDA Overview":
         sku_var = DF.groupby("Customer_Phone")["SKU_Code"].nunique()
         dist = sku_var.value_counts().sort_index()
         st.bar_chart(dist)
+    # 12) Buyer Analysis
+    with tabs[11]:
+        mm = DF['Month'].max()
+        bd = DF[DF['Month']==mm].groupby('Customer_Phone')['Redistribution Value'].sum()
+        st.write("Top Buyers (Latest Month)")
+        st.bar_chart(bd.nlargest(10))
+        st.write("Bottom Buyers (Latest Month)")
+        st.bar_chart(bd.nsmallest(10))
+    # 13) Retention
+    with tabs[12]:
+        orders = DF.groupby('Month')['Order_Id'].nunique()
+        st.line_chart(orders.rolling(3).mean())
 
-# --- Drop Detection ---
+# --- Other Sections ---
 elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
     bm = DF.groupby(['Brand','Month'])['Redistribution Value'].sum().unstack(fill_value=0)
-    mom = bm.pct_change(axis=1) * 100
-    flags = mom < -30
-    disp = mom.round(1).astype(str)
-    disp[flags] += "% 🔻"
-    disp[~flags] = ""
-    st.dataframe(disp)
-    
-# --- Customer Profiling ---
+    st.dataframe(bm.pct_change(axis=1).multiply(100).round(1).replace({np.nan: ""}))
+
 elif section == "👤 Customer Profiling":
     st.subheader("Customer Purchase Deep-Dive")
     cust = st.selectbox("Select Customer Phone:", sorted(DF['Customer_Phone'].unique()))
@@ -237,7 +241,6 @@ elif section == "👤 Customer Profiling":
         st.subheader("Next-Purchase Predictions (Heuristic)")
         st.dataframe(predict_next_purchases(cust), use_container_width=True)
 
-# --- Model Predictions ---
 elif section == "👤 Model Predictions":
     st.subheader("Next-Purchase Model Predictions")
     cust = st.selectbox("Customer:", sorted(PRED_DF['Customer_Phone'].unique()))
@@ -246,41 +249,21 @@ elif section == "👤 Model Predictions":
         p['Probability'] = p['Probability'].map(lambda x: f"{x:.1f}%")
         st.dataframe(p, use_container_width=True)
 
-# --- Cross-Selling ---
 elif section == "🔁 Cross-Selling":
-    st.subheader("Brand Switching Patterns (Top 3 Alternatives)")
-    last_purchase = DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
-    latest = DF['Month'].max()
-    dropped = last_purchase[last_purchase['Month'] < latest]
-    merged = DF.merge(dropped, on='Customer_Phone', suffixes=('','_dropped'))
-    switched = merged[(merged['Month'] > merged['Month_dropped']) & (merged['Brand'] != merged['Brand_dropped'])]
-    switches = switched.groupby(['Brand_dropped','Brand'])['Order_Id'].count().reset_index(name='Switch_Count')
-    top3 = switches.sort_values(['Brand_dropped','Switch_Count'], ascending=[True,False]).groupby('Brand_dropped').head(3).reset_index(drop=True)
-    st.dataframe(top3)
+    st.subheader("Brand Switching Patterns (Top 3)")
+    lp = DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
+    drop = lp[lp['Month'] < lp['Month'].max()]
+    sw = DF.merge(drop, on='Customer_Phone', suffixes=('','_dropped'))
+    sw = sw[(sw['Month'] > sw['Month_dropped']) & (sw['Brand'] != sw['Brand_dropped'])]
+    patterns = sw.groupby(['Brand_dropped','Brand']).size().reset_index(name='Count')
+    top3 = patterns.sort_values(['Brand_dropped','Count'], ascending=[True,False]).groupby('Brand_dropped').head(3)
+    st.dataframe(top3, use_container_width=True)
 
-# --- Brand Correlation ---
 elif section == "🔗 Brand Correlation":
     st.subheader("Brand Correlation Matrix")
     mat = DF.groupby(['Customer_Phone','Brand'])['Order_Id'].count().unstack(fill_value=0)
     st.dataframe(mat.corr().round(2), use_container_width=True)
 
-# --- Buyer Analysis ---
-elif section == "🥇 Buyer Analysis":
-    st.subheader("Top & Bottom Buyers (Latest Month)")
-    mm = DF['Month'].max()
-    bd = DF[DF['Month'] == mm].groupby('Customer_Phone')['Redistribution Value'].sum()
-    st.write("Top Buyers")
-    st.bar_chart(bd.nlargest(10))
-    st.write("Bottom Buyers")
-    st.bar_chart(bd.nsmallest(10))
-
-# --- Retention ---
-elif section == "📈 Retention":
-    st.subheader("3-Month MA of Unique Orders")
-    orders = DF.groupby('Month')['Order_Id'].nunique()
-    st.line_chart(orders.rolling(3).mean())
-
-# --- Recommender ---
 elif section == "🤖 Recommender":
     st.subheader("Hybrid SKU Recommendations")
     uim = DF.pivot_table(index='Customer_Phone', columns='SKU_Code', values='Redistribution Value', aggfunc='sum').fillna(0)
