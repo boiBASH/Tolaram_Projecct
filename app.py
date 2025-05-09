@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+from itertools import combinations
+from collections import Counter
 from sklearn.metrics.pairwise import cosine_similarity
 from datetime import datetime
 from PIL import Image
@@ -46,13 +48,13 @@ def load_model_preds():
             return "Cross Sell"
         return "Discount"
     preds["Suggestion"] = preds["Probability"].apply(suggest)
-    if "last_purchase_date" in preds.columns:
-        preds = preds.drop(columns=["last_purchase_date"])
     return preds
 
 # --- Heuristic Profiling Functions ---
 def analyze_customer_purchases(customer_phone):
     df = DF[DF['Customer_Phone'] == customer_phone].copy()
+    if df.empty:
+        return {}
     df.sort_values('Delivered_date', inplace=True)
     skus = df['SKU_Code'].unique().tolist()
     last_purchase = df.groupby('SKU_Code')['Delivered_date'].max().dt.strftime('%Y-%m-%d').to_dict()
@@ -60,14 +62,15 @@ def analyze_customer_purchases(customer_phone):
     avg_interval = {}
     for sku, grp in df.groupby('SKU_Code'):
         dates = grp['Delivered_date'].drop_duplicates().sort_values()
-        avg_interval[sku] = round((dates.diff().dt.days.dropna() / 30.44).mean(), 2) if len(dates)>1 else 'One'
+        if len(dates) > 1:
+            avg_interval[sku] = round((dates.diff().dt.days.dropna() / 30.44).mean(), 2)
+        else:
+            avg_interval[sku] = 'One'
     monthly_spend = df.groupby(['SKU_Code','Month'])['Total_Amount_Spent'].sum().groupby('SKU_Code').mean().round(2).to_dict()
-    report = {
-        'Customer Phone': customer_phone,
-        'Total Unique SKUs Bought': len(skus),
-        'SKUs Bought': skus,
-        'Purchase Summary by SKU': {}
-    }
+    report = {'Customer Phone': customer_phone,
+              'Total Unique SKUs Bought': len(skus),
+              'SKUs Bought': skus,
+              'Purchase Summary by SKU': {}}
     for sku in skus:
         report['Purchase Summary by SKU'][sku] = {
             'Last Purchase Date': last_purchase.get(sku, 'N/A'),
@@ -79,11 +82,16 @@ def analyze_customer_purchases(customer_phone):
 
 def predict_next_purchases(customer_phone):
     df = DF[DF['Customer_Phone'] == customer_phone].copy()
+    if df.empty:
+        return pd.DataFrame()
     last_purchase = df.groupby('SKU_Code')['Delivered_date'].max()
     avg_interval_days = {}
     for sku, grp in df.groupby('SKU_Code'):
         dates = grp['Delivered_date'].drop_duplicates().sort_values()
-        avg_interval_days[sku] = int(dates.diff().dt.days.dropna().mean()) if len(dates)>1 else np.nan
+        if len(dates) > 1:
+            avg_interval_days[sku] = int(dates.diff().dt.days.dropna().mean())
+        else:
+            avg_interval_days[sku] = np.nan
     avg_qty   = df.groupby(['SKU_Code','Month'])['Delivered Qty'].sum().groupby('SKU_Code').mean().round(0)
     avg_spend = df.groupby(['SKU_Code','Month'])['Total_Amount_Spent'].sum().groupby('SKU_Code').mean().round(0)
     score_df = pd.DataFrame({
@@ -108,17 +116,9 @@ st.sidebar.image(logo, width=80)
 st.sidebar.title("🚀 Sales Insights")
 section = st.sidebar.radio(
     "Select Section:",
-    [
-        "📊 EDA Overview",
-        "📉 Drop Detection",
-        "👤 Customer Profiling",
-        "👤 Model Predictions",
-        "🔁 Cross-Selling",
-        "🔗 Brand Correlation",
-        "🥇 Buyer Analysis",
-        "📈 Retention",
-        "🤖 Recommender"
-    ]
+    ["📊 EDA Overview","📉 Drop Detection","👤 Customer Profiling",
+     "👤 Model Predictions","🔁 Cross-Selling","🔗 Brand Correlation",
+     "🥇 Buyer Analysis","📈 Retention","🤖 Recommender"]
 )
 st.title("📊 Sales Intelligence Dashboard")
 
@@ -130,7 +130,6 @@ if section == "📊 EDA Overview":
         "SKU Trends","Qty vs Revenue","Avg Order Value","Lifetime Value",
         "SKU Share %","SKU Pairs","SKU Variety"
     ])
-    
     with tabs[0]:
         data = DF.groupby("SKU_Code")["Redistribution Value"].sum().nlargest(10)
         st.bar_chart(data)
@@ -142,111 +141,83 @@ if section == "📊 EDA Overview":
         summary = (counts==1).map({True:"One-time",False:"Repeat"}).value_counts()
         st.bar_chart(summary)
     with tabs[3]:
-        df_b = DF.copy()
-        df_b["MonthTS"] = df_b["Month"].dt.to_timestamp()
-        top5= df_b.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(5).index
+        df_b=DF.copy(); df_b["MonthTS"]=df_b["Month"].dt.to_timestamp()
+        top5=df_b.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(5).index
         trend=df_b[df_b["Customer_Phone"].isin(top5)]
         trend=trend.groupby(["MonthTS","Customer_Phone"]).sum()["Redistribution Value"].unstack()
         st.line_chart(trend)
     with tabs[4]:
         df_s=DF.copy(); df_s["MonthTS"]=df_s["Month"].dt.to_timestamp()
-        top5= df_s.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(5).index
+        top5=df_s.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(5).index
         trend=df_s[df_s["SKU_Code"].isin(top5)]
         trend=trend.groupby(["MonthTS","SKU_Code"]).sum()["Delivered Qty"].unstack()
         st.line_chart(trend)
     with tabs[5]:
-        monthly_summary = DF.groupby("Month")[ ["Delivered Qty","Redistribution Value"] ].sum().reset_index()
-        monthly_summary["MonthTS"] = monthly_summary["Month"].dt.to_timestamp()
-        qty_line = alt.Chart(monthly_summary).mark_line(point=True).encode(
-            x=alt.X("MonthTS:T", title="Month"),
-            y=alt.Y("Delivered Qty:Q", axis=alt.Axis(title="Total Quantity", titleColor="royalblue")),
+        monthly_summary=DF.groupby("Month")[ ["Delivered Qty","Redistribution Value"] ].sum().reset_index()
+        monthly_summary["MonthTS"]=monthly_summary["Month"].dt.to_timestamp()
+        qty=alt.Chart(monthly_summary).mark_line(point=True).encode(
+            x=alt.X("MonthTS:T",title="Month"),
+            y=alt.Y("Delivered Qty:Q",axis=alt.Axis(title="Total Quantity",titleColor="royalblue")),
             color=alt.value("royalblue")
         )
-        rev_line= alt.Chart(monthly_summary).mark_line(point=True).encode(
+        rev=alt.Chart(monthly_summary).mark_line(point=True).encode(
             x="MonthTS:T",
-            y=alt.Y("Redistribution Value:Q", axis=alt.Axis(title="Total Revenue", titleColor="orange")),
+            y=alt.Y("Redistribution Value:Q",axis=alt.Axis(title="Total Revenue",titleColor="orange")),
             color=alt.value("orange")
         )
-        dual_axis = alt.layer(qty_line, rev_line).resolve_scale(y="independent").properties(height=400)
-        st.altair_chart(dual_axis, use_container_width=True)
-    with tabs[6]:
-        data=DF.groupby("Customer_Phone")["Redistribution Value"].mean().nlargest(10)
-        st.bar_chart(data)
-    with tabs[7]:
-        data=DF.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(10)
-        st.bar_chart(data)
-    with tabs[8]:
-        share=DF.groupby("SKU_Code")["Delivered Qty"].sum()/DF["Delivered Qty"].sum()*100
-        st.bar_chart(share.nlargest(10))
+        dual=alt.layer(qty,rev).resolve_scale(y="independent").properties(height=400)
+        st.altair_chart(dual, use_container_width=True)
+    with tabs[6]: st.bar_chart(DF.groupby("Customer_Phone")["Redistribution Value"].mean().nlargest(10))
+    with tabs[7]: st.bar_chart(DF.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(10))
+    with tabs[8]: st.bar_chart((DF.groupby("SKU_Code")["Delivered Qty"].sum()/DF["Delivered Qty"].sum()*100).nlargest(10))
     with tabs[9]:
-    st.markdown("#### Top 10 SKU Pairs (Bought Together)")
-    from itertools import combinations
-    from collections import Counter
-
-    df_p = DF.copy()
-    df_p["Order_ID"] = (
-        df_p["Customer_Phone"].astype(str)
-        + "_"
-        + df_p["Delivered_date"].astype(str)
-    )
-    pair_sets = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
-
-    cnt = Counter()
-    for items in pair_sets:
-        if len(items) > 1:
-            for pair in combinations(sorted(items), 2):
-                cnt[pair] += 1
-
-    top_pairs = pd.Series(cnt).nlargest(10)
-    df_pairs  = top_pairs.to_frame(name="Count")
-    df_pairs.index = df_pairs.index.map(lambda t: f"{t[0]} & {t[1]}")
-
-    st.bar_chart(df_pairs)
-
+        cnt=Counter()
+        df_p=DF.copy(); df_p["Order_ID"]=df_p["Customer_Phone"].astype(str)+"_"+df_p["Delivered_date"].astype(str)
+        for s in df_p.groupby("Order_ID")["SKU_Code"].apply(set):
+            if len(s)>1:
+                for pair in combinations(sorted(s),2): cnt[pair]+=1
+        st.bar_chart(pd.Series(cnt).nlargest(10))
     with tabs[10]:
-        st.markdown("#### Distribution of Unique SKUs Purchased per Customer")
-        sku_per_customer = DF.groupby("Customer_Phone")["SKU_Code"].nunique()
-        dist = sku_per_customer.value_counts().sort_index()
+        sku_var=DF.groupby("Customer_Phone")["SKU_Code"].nunique()
+        dist=sku_var.value_counts().sort_index()
         st.bar_chart(dist)
 
 # --- Drop Detection ---
 elif section=="📉 Drop Detection":
     bm=DF.groupby(['Brand','Month'])['Redistribution Value'].sum().unstack(fill_value=0)
-    mom=bm.pct_change(axis=1)*100; st.dataframe(mom.round(1).replace({np.nan:""}))
+    st.dataframe(bm.pct_change(axis=1).multiply(100).round(1).replace({np.nan:""}))
 
 # --- Customer Profiling ---
 elif section=="👤 Customer Profiling":
     st.subheader("Customer Purchase Deep-Dive")
     cust=st.selectbox("Select Customer Phone",sorted(DF['Customer_Phone'].unique()))
     if cust:
-        report=analyze_customer_purchases(cust)
-        st.markdown(f"**Total Unique SKUs Bought:** {report['Total Unique SKUs Bought']}")
-        st.markdown(f"**SKUs Bought:** {', '.join(report['SKUs Bought'])}")
-        sku_df=pd.DataFrame.from_dict(report['Purchase Summary by SKU'],orient='index')
-        sku_df=sku_df.rename_axis('SKU_Code').reset_index()
+        rep=analyze_customer_purchases(cust)
+        st.markdown(f"**Total Unique SKUs Bought:** {rep['Total Unique SKUs Bought']}")
+        st.markdown(f"**SKUs Bought:** {', '.join(rep['SKUs Bought'])}")
+        sku_df=pd.DataFrame.from_dict(rep['Purchase Summary by SKU'],orient='index').rename_axis('SKU_Code').reset_index()
         st.dataframe(sku_df,use_container_width=True)
         st.subheader("Next-Purchase Predictions (Heuristic)")
-        pred_df=predict_next_purchases(cust)
-        st.dataframe(pred_df.set_index('SKU_Code'),use_container_width=True)
+        st.dataframe(predict_next_purchases(cust).set_index('SKU_Code'),use_container_width=True)
 
 # --- Model Predictions ---
 elif section=="👤 Model Predictions":
     st.subheader("Next-Purchase Model Predictions")
     cust=st.selectbox("Customer",sorted(PRED_DF['Customer_Phone'].unique()))
     if cust:
-        p=PRED_DF[PRED_DF['Customer_Phone']==cust].drop(columns=['Customer_Phone']).set_index('SKU_Code')
-        p['Probability']=p['Probability'].map(lambda x:f"{x:.1f}%")
-        st.dataframe(p,use_container_width=True)
+        df_p=PRED_DF[PRED_DF['Customer_Phone']==cust].drop(columns=['Customer_Phone']).set_index('SKU_Code')
+        df_p['Probability']=df_p['Probability'].map(lambda x:f"{x:.1f}%")
+        st.dataframe(df_p,use_container_width=True)
 
 # --- Cross-Selling ---
 elif section=="🔁 Cross-Selling":
     st.subheader("Brand Switching Patterns (Top 3)")
     lp=DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
-    dropped=lp[lp['Month']<lp['Month'].max()]
-    merged=DF.merge(dropped,on='Customer_Phone',suffixes=('','_dropped'))
-    switched=merged[(merged['Month']>merged['Month_dropped'])&(merged['Brand']!=merged['Brand_dropped'])]
-    switches=switched.groupby(['Brand_dropped','Brand'])['Order_Id'].count().reset_index(name='Count')
-    top3=switches.sort_values(['Brand_dropped','Count'],ascending=[True,False]).groupby('Brand_dropped').head(3)
+    drop=lp[lp['Month']<lp['Month'].max()]
+    sw=DF.merge(drop,on='Customer_Phone',suffixes=('','_dropped'))
+    sw=sw[(sw['Month']>sw['Month_dropped'])&(sw['Brand']!=sw['Brand_dropped'])]
+    top3=sw.groupby(['Brand_dropped','Brand']).size().reset_index(name='Count')
+    top3=top3.sort_values(['Brand_dropped','Count'],ascending=[True,False]).groupby('Brand_dropped').head(3)
     st.dataframe(top3,use_container_width=True)
 
 # --- Brand Correlation ---
@@ -260,12 +231,15 @@ elif section=="🥇 Buyer Analysis":
     st.subheader("Top & Bottom Buyers (Latest Month)")
     m=DF['Month'].max()
     bd=DF[DF['Month']==m].groupby('Customer_Phone')['Redistribution Value'].sum()
+    st.write("Top Buyers")
     st.bar_chart(bd.nlargest(10))
+    st.write("Bottom Buyers")
+    st.bar_chart(bd.nsmallest(10))
 
 # --- Retention ---
 elif section=="📈 Retention":
     st.subheader("3-Month MA of Unique Orders")
-    orders=DF.groupby('Month')['Order_Id].nunique()
+    orders=DF.groupby('Month')['Order_Id'].nunique()
     st.line_chart(orders.rolling(3).mean())
 
 # --- Recommender ---
@@ -278,6 +252,6 @@ elif section=="🤖 Recommender":
     sel=st.selectbox("Select Customer",uim.index)
     if st.button("Recommend"):
         w=uim.T.dot(us[uim.index.get_loc(sel)]).drop(sel)
-        cs=isim[uim.columns].sum(axis=1)
+        cs=isim.sum(axis=1)
         scores=(0.5*w+0.5*cs).nlargest(5)
         st.dataframe(scores.reset_index().rename(columns={0:'Score','index':'SKU_Code'}),use_container_width=True)
