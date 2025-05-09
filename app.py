@@ -250,12 +250,13 @@ section = st.sidebar.radio(
     ]
 )
 
+# --- EDA Overview) ---
 if section == "📊 EDA Overview":
     st.subheader("Exploratory Data Analysis")
     tabs = st.tabs([
-        "Top Revenue","Top Quantity","Buyer Types","Buyers Trend",
-        "SKUs Trend","Qty vs Revenue","Avg Order Value","Lifetime Value",
-        "SKU Share %","SKU Pairs"
+        "Top Revenue", "Top Quantity", "Buyer Types", "Buyers Trend",
+        "SKUs Trend", "Qty vs Revenue", "Avg Order Value", "Lifetime Value",
+        "SKU Share %", "SKU Pairs"
     ])
 
     with tabs[0]:
