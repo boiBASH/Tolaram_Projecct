@@ -1,12 +1,14 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.metrics.pairwise import cosine_similarity
 from datetime import datetime
 from PIL import Image
 
-# --- Load and preprocess sales data ---
+# --- Data Loading & Preprocessing ---
 @st.cache_data
 def load_sales_data():
     df = pd.read_csv("cleaned_data_analysis.csv")
@@ -23,28 +25,22 @@ def load_sales_data():
     df['Total_Amount_Spent'] = df['Redistribution Value'] * df['Delivered Qty']
     return df
 
-# --- Load model predictions with updated formatting & logic ---
 @st.cache_data
 def load_model_preds():
     preds = pd.read_csv(
         "sku_predictions.csv",
         parse_dates=["last_purchase_date", "pred_next_date"],
     )
-    # Rename raw columns to user-friendly names
     preds = preds.rename(columns={
         "pred_next_date":     "Next Purchase Date",
         "pred_spend":          "Expected Spend",
         "pred_qty":            "Expected Quantity",
         "probability":         "Probability"
     })
-    # Convert date column to date only
     preds["Next Purchase Date"] = preds["Next Purchase Date"].dt.date
-    # Format numeric columns
     preds["Expected Spend"] = preds["Expected Spend"].round(0).astype(int)
     preds["Expected Quantity"] = preds["Expected Quantity"].round(0).astype(int)
-    # Probability to percent, one decimal
     preds["Probability"] = (preds["Probability"] * 100).round(1)
-    # Suggestion logic based on probability
     def suggest(row):
         p = row["Probability"]
         if p >= 70:
@@ -54,7 +50,6 @@ def load_model_preds():
         else:
             return "Discount"
     preds["Suggestion"] = preds.apply(suggest, axis=1)
-    # Drop raw date column if still present
     if "last_purchase_date" in preds.columns:
         preds = preds.drop(columns=["last_purchase_date"])
     return preds
@@ -62,161 +57,261 @@ def load_model_preds():
 DF = load_sales_data()
 PRED_DF = load_model_preds()
 
-# --- Analysis functions ---
-def analyze_customer_purchases(customer_phone):
-    df = DF[DF['Customer_Phone'] == customer_phone].copy()
-    if df.empty:
-        return {}
-    df.sort_values('Delivered_date', inplace=True)
-    skus = df['SKU_Code'].unique().tolist()
-    last_purchase = df.groupby('SKU_Code')['Delivered_date'].max().dt.strftime('%Y-%m-%d').to_dict()
-    monthly_qty = df.groupby(['SKU_Code','Month'])['Delivered Qty'].sum().groupby('SKU_Code').mean().round(2).to_dict()
-    avg_interval = {}
-    for sku, grp in df.groupby('SKU_Code'):
-        dates = grp['Delivered_date'].drop_duplicates().sort_values()
-        if len(dates) > 1:
-            avg_interval[sku] = round((dates.diff().dt.days.dropna() / 30.44).mean(), 2)
-        else:
-            avg_interval[sku] = "One"
-    monthly_spend = df.groupby(['SKU_Code','Month'])['Total_Amount_Spent'].sum().groupby('SKU_Code').mean().round(2).to_dict()
-    report = {'Customer Phone': customer_phone, 'Total Unique SKUs Bought': len(skus), 'SKUs Bought': skus, 'Purchase Summary by SKU': {}}
-    for sku in skus:
-        report['Purchase Summary by SKU'][sku] = {
-            'Last Purchase Date':           last_purchase.get(sku, 'N/A'),
-            'Avg Monthly Quantity':         monthly_qty.get(sku, 0),
-            'Avg Purchase Interval (Months)': avg_interval.get(sku, 'N/A'),
-            'Avg Monthly Spend':            monthly_spend.get(sku, 0)
-        }
-    return report
+# --- EDA Plotting Functions ---
+def plot_top_skus_by_value(df, top_n=10):
+    data = df.groupby("SKU_Code")["Redistribution Value"].sum().nlargest(top_n)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.barplot(x=data.values, y=data.index, ax=ax, ci=None)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{int(x):,}'))
+    ax.set_title(f"Top {top_n} SKUs by Revenue", fontsize=14)
+    ax.set_xlabel("Total Spend", fontsize=12)
+    ax.set_ylabel("")
+    for i, v in enumerate(data.values):
+        ax.text(v + v*0.01, i, f'{int(v):,}', va='center', fontsize=10)
+    plt.tight_layout()
+    return fig
 
-def predict_next_purchases(customer_phone):
-    df = DF[DF['Customer_Phone'] == customer_phone].copy()
-    if df.empty:
-        return pd.DataFrame()
-    last_purchase = df.groupby('SKU_Code')['Delivered_date'].max()
-    avg_interval_days = {}
-    for sku, grp in df.groupby('SKU_Code'):
-        dates = grp['Delivered_date'].drop_duplicates().sort_values()
-        if len(dates) > 1:
-            avg_interval_days[sku] = int(dates.diff().dt.days.dropna().mean())
-        else:
-            avg_interval_days[sku] = np.nan
-    avg_qty = df.groupby(['SKU_Code','Month'])['Delivered Qty'].sum().groupby('SKU_Code').mean().round(0)
-    avg_spend = df.groupby(['SKU_Code','Month'])['Total_Amount_Spent'].sum().groupby('SKU_Code').mean().round(0)
-    score_df = pd.DataFrame({
-        'Last Purchase Date':   last_purchase.dt.date,
-        'Avg Interval Days':    pd.Series(avg_interval_days),
-        'Expected Quantity':    avg_qty,
-        'Expected Spend':       avg_spend
-    }).dropna(subset=['Avg Interval Days'])
-    # compute Next Purchase Date and strip time
-    score_df['Next Purchase Date'] = (
-        pd.to_datetime(score_df['Last Purchase Date']) +
-        pd.to_timedelta(score_df['Avg Interval Days'], unit='D')
-    ).dt.date
-    result = (
-        score_df
-        .sort_values('Avg Interval Days')
-        .head(3)[['Next Purchase Date','Expected Spend','Expected Quantity']]
-        .rename_axis('SKU_Code')
-        .reset_index()
+def plot_top_skus_by_qty(df, top_n=10):
+    data = df.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(top_n)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.barplot(x=data.values, y=data.index, ax=ax, ci=None)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{int(x):,}'))
+    ax.set_title(f"Top {top_n} SKUs by Quantity", fontsize=14)
+    ax.set_xlabel("Total Units", fontsize=12)
+    ax.set_ylabel("")
+    for i, v in enumerate(data.values):
+        ax.text(v + v*0.01, i, f'{int(v):,}', va='center', fontsize=10)
+    plt.tight_layout()
+    return fig
+
+def plot_repeat_vs_one_time(df):
+    counts = (
+        df.groupby("Customer_Phone")["Delivered_date"]
+          .nunique()
+          .reset_index(name="Purchase Count")
     )
-    return result
+    counts["Type"] = counts["Purchase Count"].apply(lambda x: "One-time" if x==1 else "Repeat")
+    summary = counts["Type"].value_counts().reset_index()
+    summary.columns = ["Type", "Customer Count"]
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.barplot(data=summary, x="Type", y="Customer Count", ax=ax, ci=None)
+    ax.set_title("Repeat vs. One-Time Buyers", fontsize=14)
+    for p in ax.patches:
+        ax.annotate(f'{int(p.get_height()):,}',
+                    (p.get_x() + p.get_width()/2, p.get_height()),
+                    ha='center', va='bottom')
+    plt.tight_layout()
+    return fig
 
-# --- Streamlit UI ---
+def plot_monthly_top5_buyers(df):
+    top5 = df.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(5).index
+    df5 = df[df["Customer_Phone"].isin(top5)]
+    data = df5.groupby(['Month','Customer_Phone'])['Redistribution Value'].sum().reset_index()
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.lineplot(data=data, x="Month", y="Redistribution Value", hue="Customer_Phone", marker="o", ax=ax)
+    ax.set_title("Monthly Value Trend: Top 5 Buyers", fontsize=14)
+    ax.set_xlabel("Month", fontsize=12); ax.set_ylabel("Spend", fontsize=12)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    return fig
+
+def plot_monthly_top5_skus(df):
+    top5 = df.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(5).index
+    df5 = df[df["SKU_Code"].isin(top5)]
+    data = df5.groupby(['Month','SKU_Code'])['Delivered Qty'].sum().reset_index()
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.lineplot(data=data, x="Month", y="Delivered Qty", hue="SKU_Code", marker="o", ax=ax)
+    ax.set_title("Monthly Qty Trend: Top 5 SKUs", fontsize=14)
+    ax.set_xlabel("Month", fontsize=12); ax.set_ylabel("Quantity", fontsize=12)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    return fig
+
+def plot_dual_axis_quantity_revenue(df):
+    summary = df.groupby("Month")[["Delivered Qty","Redistribution Value"]].sum().reset_index()
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+    sns.lineplot(data=summary, x="Month", y="Delivered Qty", marker="o", ax=ax1)
+    ax2 = ax1.twinx()
+    sns.lineplot(data=summary, x="Month", y="Redistribution Value", marker="s", ax=ax2)
+    ax1.set_title("Monthly Quantity vs Revenue", fontsize=14)
+    ax1.set_xlabel("Month", fontsize=12); ax1.set_ylabel("Qty", fontsize=12)
+    ax2.set_ylabel("Revenue", fontsize=12)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    return fig
+
+def plot_top_customers_avg_order_value(df):
+    data = df.groupby("Customer_Phone")["Redistribution Value"].mean().nlargest(10)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.barplot(x=data.values, y=data.index, ax=ax, ci=None)
+    ax.set_title("Top 10 by Avg Order Value", fontsize=14)
+    ax.set_xlabel("Avg Spend", fontsize=12); ax.set_ylabel("")
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{int(x):,}'))
+    for i, v in enumerate(data.values):
+        ax.text(v+v*0.01, i, f'{int(v):,}', va='center', fontsize=10)
+    plt.tight_layout()
+    return fig
+
+def plot_top_customers_lifetime_value(df):
+    data = df.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(10)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.barplot(x=data.values, y=data.index, ax=ax, ci=None)
+    ax.set_title("Top 10 by Lifetime Value", fontsize=14)
+    ax.set_xlabel("Total Spend", fontsize=12); ax.set_ylabel("")
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{int(x):,}'))
+    for i, v in enumerate(data.values):
+        ax.text(v+v*0.01, i, f'{int(v):,}', va='center', fontsize=10)
+    plt.tight_layout()
+    return fig
+
+def plot_sku_concentration_pct(df):
+    data = (df.groupby("SKU_Code")["Delivered Qty"].sum() /
+            df["Delivered Qty"].sum() * 100).nlargest(10)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.barplot(x=data.values, y=data.index, ax=ax, ci=None)
+    ax.set_title("Top 10 SKUs by Qty Share (%)", fontsize=14)
+    ax.set_xlabel("Share (%)", fontsize=12); ax.set_ylabel("")
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{x:.2f}%'))
+    for i, v in enumerate(data.values):
+        ax.text(v+0.2, i, f'{v:.2f}%', va='center', fontsize=10)
+    plt.tight_layout()
+    return fig
+
+def plot_sku_pairs(df):
+    from itertools import combinations
+    from collections import Counter
+    df['Order_ID'] = df['Customer_Phone'].astype(str) + "_" + df['Delivered_date'].astype(str)
+    order_skus = df.groupby("Order_ID")["SKU_Code"].apply(set)
+    counts = Counter()
+    for items in order_skus:
+        if len(items)>1:
+            for pair in combinations(sorted(items),2):
+                counts[pair]+=1
+    pair_df = pd.DataFrame(counts.items(), columns=["SKU_Pair","Count"]).nlargest(10,"Count")
+    fig, ax = plt.subplots(figsize=(8,5))
+    sns.barplot(x=pair_df['Count'], y=pair_df['SKU_Pair'].astype(str), ax=ax, ci=None)
+    ax.set_title("Top 10 SKU Pairs", fontsize=14)
+    ax.set_xlabel("Orders Together", fontsize=12); ax.set_ylabel("")
+    for i, v in enumerate(pair_df['Count']):
+        ax.text(v+1, i, f'{v}', va='center', fontsize=10)
+    plt.tight_layout()
+    return fig
+
+# --- Streamlit App UI ---
+st.set_page_config(page_title="Sales Intelligence Dashboard", layout="wide")
 logo = Image.open("logo.png")
 st.image(logo, width=120)
-st.markdown("<h1 style='text-align: center;'>📊 Sales Intelligence & Product Recommendation Dashboard</h1>", unsafe_allow_html=True)
-section = st.sidebar.radio("Choose a Section", [
-    "📊 EDA Overview","📉 Drop Detection","👤 Customer Profiling","👤 Customer Profiling (Model Prediction)",
-    "🔁 Cross-Selling","🔗 Brand Correlation","🥇 Buyer Analysis","📈 Retention & Moving Average","🤖 Recommender System"
-])
+st.markdown("<h1 style='text-align:center;'>📊 Sales Intelligence Dashboard</h1>", unsafe_allow_html=True)
 
-df_monthly = DF.groupby('Month')['Redistribution Value'].sum()
+section = st.sidebar.radio(
+    "Choose a Section",
+    [
+        "📊 EDA Overview",
+        "📉 Drop Detection",
+        "👤 Customer Profiling",
+        "👤 Customer Profiling (Model Prediction)",
+        "🔁 Cross-Selling",
+        "🔗 Brand Correlation",
+        "🥇 Buyer Analysis",
+        "📈 Retention & Moving Average",
+        "🤖 Recommender System"
+    ]
+)
+
 if section == "📊 EDA Overview":
-    st.subheader("Sales Trends Over Time")
-    st.line_chart(df_monthly.to_timestamp())
-    st.subheader("Top-Selling Products")
-    st.bar_chart(DF.groupby('SKU_Code')['Redistribution Value'].sum().nlargest(10))
-    st.subheader("Top Brands")
-    st.bar_chart(DF.groupby('Brand')['Redistribution Value'].sum().nlargest(10))
+    st.subheader("Exploratory Data Analysis")
+    tabs = st.tabs([
+        "Top Revenue","Top Quantity","Buyer Types","Buyers Trend",
+        "SKUs Trend","Qty vs Revenue","Avg Order Value","Lifetime Value",
+        "SKU Share %","SKU Pairs"
+    ])
+    st.pyplot(plot_top_skus_by_value(DF), use_container_width=True, key="r")
+    with tabs[1]: st.pyplot(plot_top_skus_by_qty(DF), use_container_width=True)
+    with tabs[2]: st.pyplot(plot_repeat_vs_one_time(DF), use_container_width=True)
+    with tabs[3]: st.pyplot(plot_monthly_top5_buyers(DF), use_container_width=True)
+    with tabs[4]: st.pyplot(plot_monthly_top5_skus(DF), use_container_width=True)
+    with tabs[5]: st.pyplot(plot_dual_axis_quantity_revenue(DF), use_container_width=True)
+    with tabs[6]: st.pyplot(plot_top_customers_avg_order_value(DF), use_container_width=True)
+    with tabs[7]: st.pyplot(plot_top_customers_lifetime_value(DF), use_container_width=True)
+    with tabs[8]: st.pyplot(plot_sku_concentration_pct(DF), use_container_width=True)
+    with tabs[9]: st.pyplot(plot_sku_pairs(DF), use_container_width=True)
+
 elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
     bm = DF.groupby(['Brand','Month'])['Redistribution Value'].sum().unstack(fill_value=0)
-    mom = bm.pct_change(axis=1) * 100
+    mom = bm.pct_change(axis=1)*100
     flags = mom < -30
     disp = mom.round(1).astype(str)
-    disp[flags] += "% 🔻"
-    disp[~flags] = ""
+    disp[flags] += "% 🔻"; disp[~flags] = ""
     st.dataframe(disp)
+
 elif section == "👤 Customer Profiling":
     st.subheader("Customer Purchase Deep-Dive")
     cust = st.selectbox("Select Customer Phone:", sorted(DF['Customer_Phone'].unique()))
     if cust:
-        report = analyze_customer_purchases(cust)
-        st.markdown(f"**Total Unique SKUs Bought:** {report['Total Unique SKUs Bought']}")
-        st.markdown(f"**SKUs Bought:** {', '.join(report['SKUs Bought'])}")
-        sku_df = pd.DataFrame.from_dict(report['Purchase Summary by SKU'], orient='index').rename_axis('SKU_Code').reset_index()
-        st.dataframe(sku_df, use_container_width=True)
-        pred_df = predict_next_purchases(cust)
-        st.subheader("Next-Purchase Predictions (Heuristic)")
-        st.dataframe(pred_df.set_index('SKU_Code'), use_container_width=True)
+        df_c = DF[DF['Customer_Phone']==cust]
+        skus = df_c['SKU_Code'].unique().tolist()
+        last = df_c.groupby('SKU_Code')['Delivered_date'].max().dt.date
+        qty = df_c.groupby(['SKU_Code','Month'])['Delivered Qty'].sum().groupby('SKU_Code').mean().round(2)
+        spend = df_c.groupby(['SKU_Code','Month'])['Total_Amount_Spent'].sum().groupby('SKU_Code').mean().round(2)
+        interval = {sku: round((grp['Delivered_date'].drop_duplicates().sort_values().diff().dt.days.dropna().mean()/30.44),2)
+                    if len(grp)>1 else "One" for sku, grp in df_c.groupby('SKU_Code')}
+        report = pd.DataFrame({
+            'SKU_Code': skus,
+            'Last Purchase': [last[s] for s in skus],
+            'Avg Qty/Mth': [qty.get(s,0) for s in skus],
+            'Interval (Mth)': [interval.get(s) for s in skus],
+            'Avg Spend/Mth': [spend.get(s,0) for s in skus],
+        }).set_index('SKU_Code')
+        st.dataframe(report)
+
+elif section == "👤 Customer Profiling (Model Prediction)":
+    st.subheader("Next-Purchase Model Predictions")
+    cust = st.selectbox("Customer:", sorted(PRED_DF['Customer_Phone'].unique()))
+    if cust:
+        p = PRED_DF[PRED_DF['Customer_Phone']==cust].drop(columns=['Customer_Phone']).set_index('SKU_Code')
+        p['Probability'] = p['Probability'].map(lambda x: f"{x:.1f}%")
+        st.dataframe(p)
+
 elif section == "🔁 Cross-Selling":
-    st.subheader("Brand Switching Patterns (Top 3 Alternatives)")
-    last_purchase = DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
+    st.subheader("Brand Switching Patterns (Top 3)")
+    lp = DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
     latest = DF['Month'].max()
-    dropped = last_purchase[last_purchase['Month'] < latest]
+    dropped = lp[lp['Month']<latest]
     merged = DF.merge(dropped, on='Customer_Phone', suffixes=('','_dropped'))
-    switched = merged[(merged['Month'] > merged['Month_dropped']) & (merged['Brand'] != merged['Brand_dropped'])]
-    switches = switched.groupby(['Brand_dropped','Brand'])['Order_Id'].count().reset_index(name='Switch_Count')
-    top3 = switches.sort_values(['Brand_dropped','Switch_Count'], ascending=[True,False]).groupby('Brand_dropped').head(3).reset_index(drop=True)
+    switched = merged[(merged['Month']>merged['Month_dropped'])&(merged['Brand']!=merged['Brand_dropped'])]
+    switches = switched.groupby(['Brand_dropped','Brand'])['Order_Id'].count().reset_index(name='Count')
+    top3 = switches.sort_values(['Brand_dropped','Count'],ascending=[True,False]).groupby('Brand_dropped').head(3)
     st.dataframe(top3)
+
 elif section == "🔗 Brand Correlation":
     st.subheader("Brand Correlation Matrix")
-    ub = DF.groupby(['Customer_Phone','Brand'])['Order_Id'].count().unstack(fill_value=0)
-    st.dataframe(ub.corr().round(2))
+    mat = DF.groupby(['Customer_Phone','Brand'])['Order_Id'].count().unstack(fill_value=0)
+    st.dataframe(mat.corr().round(2))
+
 elif section == "🥇 Buyer Analysis":
     st.subheader("Top & Bottom Buyers (Latest Month)")
     latest_m = DF['Month'].max()
-    bd = DF[DF['Month'] == latest_m].groupby('Customer_Phone')['Redistribution Value'].sum().reset_index()
-    st.write("Top Buyers")
-    st.dataframe(bd.nlargest(10, 'Redistribution Value'))
-    st.write("Bottom Buyers")
-    st.dataframe(bd.nsmallest(10, 'Redistribution Value'))
+    bd = DF[DF['Month']==latest_m].groupby('Customer_Phone')['Redistribution Value'].sum().reset_index()
+    st.write("Top Buyers"); st.dataframe(bd.nlargest(10,'Redistribution Value'))
+    st.write("Bottom Buyers"); st.dataframe(bd.nsmallest(10,'Redistribution Value'))
+
 elif section == "📈 Retention & Moving Average":
-    st.subheader("3-Month MA of Orders")
+    st.subheader("3-Month Moving Avg of Orders")
     ords = DF.groupby('Month')['Order_Id'].nunique()
     st.line_chart(ords.rolling(3).mean())
+
 elif section == "🤖 Recommender System":
     st.subheader("Hybrid Recommendations")
     uim = DF.pivot_table(index='Customer_Phone', columns='SKU_Code', values='Redistribution Value', aggfunc='sum').fillna(0)
     pf = DF[['SKU_Code','Brand']].drop_duplicates().set_index('SKU_Code')
     pe = pd.get_dummies(pf, columns=['Brand'])
-    us_df = pd.DataFrame(cosine_similarity(uim), index=uim.index, columns=uim.index)
-    is_df = pd.DataFrame(cosine_similarity(pe), index=pe.index, columns=pe.index)
-    sel_c = st.selectbox("Select Customer for Recommendations:", uim.index)
+    us = pd.DataFrame(cosine_similarity(uim), index=uim.index, columns=uim.index)
+    isim = pd.DataFrame(cosine_similarity(pe), index=pe.index, columns=pe.index)
+    sel = st.selectbox("Select Customer:", uim.index)
     if st.button("Show Recommendations"):
-        b = uim.loc[sel_c]
-        w = uim.T.dot(us_df[sel_c]).div(us_df[sel_c].sum())
-        bi = b[b > 0].index
-        cs = is_df[bi].sum(axis=1)
-        fs = 0.5 * w + 0.5 * cs
-        fs = fs.drop(bi, errors='ignore')
-        st.dataframe(fs.nlargest(5).reset_index().rename(columns={0:'Score','index':'Recommended SKU'}))
-elif section == "👤 Customer Profiling (Model Prediction)":
-    st.subheader("Next-Purchase Model Predictions")
-    cust = st.selectbox("Select Customer Phone:", sorted(PRED_DF['Customer_Phone'].unique()))
-    if cust:
-        # Filter for selected customer and keep Last Purchase Date
-        pred_df = (
-            PRED_DF[PRED_DF['Customer_Phone'] == cust]
-            .drop(columns=["Customer_Phone"], errors='ignore')
-            .set_index("SKU_Code")
-        )
-        # Ensure Last Purchase Date is formatted as date-only string
-        if "Last Purchase Date" in pred_df.columns:
-            pred_df["Last Purchase Date"] = pd.to_datetime(pred_df["Last Purchase Date"]).dt.date
-        # Format Probability as percentage string
-        if "Probability" in pred_df.columns:
-            pred_df["Probability"] = pred_df["Probability"].map(lambda x: f"{x:.1f}%")
-        st.dataframe(pred_df, use_container_width=True)
+        w = uim.T.dot(us[sel]).div(us[sel].sum())
+        bi = uim.loc[sel][uim.loc[sel]>0].index
+        cs = isim[bi].sum(axis=1)
+        scores = (0.5*w+0.5*cs).drop(bi, errors='ignore')
+        st.dataframe(scores.nlargest(5).reset_index().rename(columns={0:'Score','index':'SKU'}))
