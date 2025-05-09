@@ -57,178 +57,6 @@ def load_model_preds():
 DF = load_sales_data()
 PRED_DF = load_model_preds()
 
-# --- EDA Plotting Functions ---
-def plot_top_skus_by_value(df, top_n=10):
-    data = df.groupby("SKU_Code")["Redistribution Value"].sum().nlargest(top_n)
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.barplot(x=data.values, y=data.index, ax=ax, ci=None)
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{int(x):,}'))
-    ax.set_title(f"Top {top_n} SKUs by Revenue", fontsize=14)
-    ax.set_xlabel("Total Spend", fontsize=12)
-    ax.set_ylabel("")
-    for i, v in enumerate(data.values):
-        ax.text(v + v*0.01, i, f'{int(v):,}', va='center', fontsize=10)
-    plt.tight_layout()
-    return fig
-
-def plot_top_skus_by_qty(df, top_n=10):
-    data = df.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(top_n)
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.barplot(x=data.values, y=data.index, ax=ax, ci=None)
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{int(x):,}'))
-    ax.set_title(f"Top {top_n} SKUs by Quantity", fontsize=14)
-    ax.set_xlabel("Total Units", fontsize=12)
-    ax.set_ylabel("")
-    for i, v in enumerate(data.values):
-        ax.text(v + v*0.01, i, f'{int(v):,}', va='center', fontsize=10)
-    plt.tight_layout()
-    return fig
-
-def plot_repeat_vs_one_time(df):
-    counts = (
-        df.groupby("Customer_Phone")["Delivered_date"]
-          .nunique()
-          .reset_index(name="Purchase Count")
-    )
-    counts["Type"] = counts["Purchase Count"].apply(lambda x: "One-time" if x==1 else "Repeat")
-    summary = counts["Type"].value_counts().reset_index()
-    summary.columns = ["Type", "Customer Count"]
-    fig, ax = plt.subplots(figsize=(6, 4))
-    sns.barplot(data=summary, x="Type", y="Customer Count", ax=ax, ci=None)
-    ax.set_title("Repeat vs. One-Time Buyers", fontsize=14)
-    for p in ax.patches:
-        ax.annotate(f'{int(p.get_height()):,}',
-                    (p.get_x() + p.get_width()/2, p.get_height()),
-                    ha='center', va='bottom')
-    plt.tight_layout()
-    return fig
-
-def plot_monthly_top5_buyers(df):
-    top5 = df.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(5).index
-    df5 = df[df["Customer_Phone"].isin(top5)]
-    data = (
-        df5
-        .groupby(['Month','Customer_Phone'])['Redistribution Value']
-        .sum()
-        .reset_index()
-    )
-    # ← Add this line:
-    data['Month'] = data['Month'].astype(str)
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.lineplot(
-        data=data,
-        x="Month", y="Redistribution Value",
-        hue="Customer_Phone",
-        marker="o", ax=ax
-    )
-    ax.set_title("Monthly Value Trend: Top 5 Buyers", fontsize=14)
-    ax.set_xlabel("Month", fontsize=12)
-    ax.set_ylabel("Spend", fontsize=12)
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    return fig
-
-def plot_monthly_top5_skus(df):
-    top5 = df.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(5).index
-    df5 = df[df["SKU_Code"].isin(top5)]
-    data = (
-        df5
-        .groupby(['Month','SKU_Code'])['Delivered Qty']
-        .sum()
-        .reset_index()
-    )
-    # ← And here:
-    data['Month'] = data['Month'].astype(str)
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.lineplot(
-        data=data,
-        x="Month", y="Delivered Qty",
-        hue="SKU_Code",
-        marker="o", ax=ax
-    )
-    ax.set_title("Monthly Qty Trend: Top 5 SKUs", fontsize=14)
-    ax.set_xlabel("Month", fontsize=12)
-    ax.set_ylabel("Quantity", fontsize=12)
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    return fig
-
-def plot_dual_axis_quantity_revenue(df):
-    summary = df.groupby("Month")[["Delivered Qty","Redistribution Value"]].sum().reset_index()
-    # ← And here too:
-    summary['Month'] = summary['Month'].astype(str)
-
-    fig, ax1 = plt.subplots(figsize=(8, 5))
-    sns.lineplot(data=summary, x="Month", y="Delivered Qty", marker="o", ax=ax1)
-    ax2 = ax1.twinx()
-    sns.lineplot(data=summary, x="Month", y="Redistribution Value", marker="s", ax=ax2)
-    ax1.set_title("Monthly Quantity vs Revenue", fontsize=14)
-    ax1.set_xlabel("Month", fontsize=12)
-    ax1.set_ylabel("Qty", fontsize=12)
-    ax2.set_ylabel("Revenue", fontsize=12)
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    return fig
-
-def plot_top_customers_avg_order_value(df):
-    data = df.groupby("Customer_Phone")["Redistribution Value"].mean().nlargest(10)
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.barplot(x=data.values, y=data.index, ax=ax, ci=None)
-    ax.set_title("Top 10 by Avg Order Value", fontsize=14)
-    ax.set_xlabel("Avg Spend", fontsize=12); ax.set_ylabel("")
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{int(x):,}'))
-    for i, v in enumerate(data.values):
-        ax.text(v+v*0.01, i, f'{int(v):,}', va='center', fontsize=10)
-    plt.tight_layout()
-    return fig
-
-def plot_top_customers_lifetime_value(df):
-    data = df.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(10)
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.barplot(x=data.values, y=data.index, ax=ax, ci=None)
-    ax.set_title("Top 10 by Lifetime Value", fontsize=14)
-    ax.set_xlabel("Total Spend", fontsize=12); ax.set_ylabel("")
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{int(x):,}'))
-    for i, v in enumerate(data.values):
-        ax.text(v+v*0.01, i, f'{int(v):,}', va='center', fontsize=10)
-    plt.tight_layout()
-    return fig
-
-def plot_sku_concentration_pct(df):
-    data = (df.groupby("SKU_Code")["Delivered Qty"].sum() /
-            df["Delivered Qty"].sum() * 100).nlargest(10)
-    fig, ax = plt.subplots(figsize=(8, 5))
-    sns.barplot(x=data.values, y=data.index, ax=ax, ci=None)
-    ax.set_title("Top 10 SKUs by Qty Share (%)", fontsize=14)
-    ax.set_xlabel("Share (%)", fontsize=12); ax.set_ylabel("")
-    ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{x:.2f}%'))
-    for i, v in enumerate(data.values):
-        ax.text(v+0.2, i, f'{v:.2f}%', va='center', fontsize=10)
-    plt.tight_layout()
-    return fig
-
-def plot_sku_pairs(df):
-    from itertools import combinations
-    from collections import Counter
-    df['Order_ID'] = df['Customer_Phone'].astype(str) + "_" + df['Delivered_date'].astype(str)
-    order_skus = df.groupby("Order_ID")["SKU_Code"].apply(set)
-    counts = Counter()
-    for items in order_skus:
-        if len(items)>1:
-            for pair in combinations(sorted(items),2):
-                counts[pair]+=1
-    pair_df = pd.DataFrame(counts.items(), columns=["SKU_Pair","Count"]).nlargest(10,"Count")
-    fig, ax = plt.subplots(figsize=(8,5))
-    sns.barplot(x=pair_df['Count'], y=pair_df['SKU_Pair'].astype(str), ax=ax, ci=None)
-    ax.set_title("Top 10 SKU Pairs", fontsize=14)
-    ax.set_xlabel("Orders Together", fontsize=12); ax.set_ylabel("")
-    for i, v in enumerate(pair_df['Count']):
-        ax.text(v+1, i, f'{v}', va='center', fontsize=10)
-    plt.tight_layout()
-    return fig
-
 # --- Streamlit App UI ---
 st.set_page_config(page_title="Sales Intelligence Dashboard", layout="wide")
 logo = Image.open("logo.png")
@@ -287,8 +115,7 @@ if section == "📊 EDA Overview":
         st.markdown("#### Monthly Spend Trend: Top 5 Buyers")
         df_b = DF.copy()
         df_b["MonthTS"] = df_b["Month"].dt.to_timestamp()
-        top5_buyers = df_b.groupby("Customer_Phone")["Redistribution Value"] \
-                          .sum().nlargest(5).index
+        top5_buyers = df_b.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(5).index
         trend_b = (
             df_b[df_b["Customer_Phone"].isin(top5_buyers)]
               .groupby(["MonthTS","Customer_Phone"])["Redistribution Value"]
@@ -302,8 +129,7 @@ if section == "📊 EDA Overview":
         st.markdown("#### Monthly Quantity Trend: Top 5 SKUs")
         df_s = DF.copy()
         df_s["MonthTS"] = df_s["Month"].dt.to_timestamp()
-        top5_skus = df_s.groupby("SKU_Code")["Delivered Qty"] \
-                        .sum().nlargest(5).index
+        top5_skus = df_s.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(5).index
         trend_s = (
             df_s[df_s["SKU_Code"].isin(top5_skus)]
               .groupby(["MonthTS","SKU_Code"])["Delivered Qty"]
@@ -317,7 +143,7 @@ if section == "📊 EDA Overview":
         st.markdown("#### Monthly Quantity & Revenue")
         df_m = DF.copy()
         df_m["MonthTS"] = df_m["Month"].dt.to_timestamp()
-        monthly = df_m.groupby("MonthTS")[["Delivered Qty","Redistribution Value"]].sum()
+        monthly = df_m.groupby("MonthTS")[ ["Delivered Qty","Redistribution Value"] ].sum()
         st.line_chart(monthly)
 
     # 7) Top 10 Customers by Average Order Value
@@ -364,7 +190,7 @@ if section == "📊 EDA Overview":
         df_pairs = top_pairs.to_frame(name="Count")
         df_pairs.index = df_pairs.index.map(lambda t: f"{t[0]} & {t[1]}")
         st.bar_chart(df_pairs)
-        
+
 elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
     bm = DF.groupby(['Brand','Month'])['Redistribution Value'].sum().unstack(fill_value=0)
