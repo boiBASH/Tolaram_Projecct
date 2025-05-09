@@ -230,7 +230,7 @@ elif section == "👤 Customer Profiling":
         sku_df = sku_df.rename_axis('SKU_Code').reset_index()
         st.dataframe(sku_df, use_container_width=True)
         st.subheader("Next-Purchase Predictions (Heuristic)")
-        st.dataframe(predict_next_purchases(cust).set_index('SKU_Code'), use_container_width=True)
+        st.dataframe(predict_next_purchases(cust), use_container_width=True)
 
 # --- Model Predictions ---
 elif section == "👤 Model Predictions":
