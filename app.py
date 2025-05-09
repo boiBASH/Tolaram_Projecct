@@ -243,14 +243,15 @@ elif section == "👤 Model Predictions":
 
 # --- Cross-Selling ---
 elif section == "🔁 Cross-Selling":
-    st.subheader("Brand Switching Patterns (Top 3)")
-    lp = DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
-    drop = lp[lp['Month'] < lp['Month'].max()]
-    sw = DF.merge(drop, on='Customer_Phone', suffixes=('','_dropped'))
-    sw = sw[(sw['Month'] > sw['Month_dropped']) & (sw['Brand'] != sw['Brand_dropped'])]
-    patterns = sw.groupby(['Brand_dropped','Brand']).size().reset_index(name='Count')
-    top3 = patterns.sort_values(['Brand_dropped','Count'], ascending=[True,False]).groupby('Brand_dropped').head(3)
-    st.dataframe(top3, use_container_width=True)
+    st.subheader("Brand Switching Patterns (Top 3 Alternatives)")
+    last_purchase = DF.groupby(['Customer_Phone','Brand'])['Month'].max().reset_index()
+    latest = DF['Month'].max()
+    dropped = last_purchase[last_purchase['Month'] < latest]
+    merged = DF.merge(dropped, on='Customer_Phone', suffixes=('','_dropped'))
+    switched = merged[(merged['Month'] > merged['Month_dropped']) & (merged['Brand'] != merged['Brand_dropped'])]
+    switches = switched.groupby(['Brand_dropped','Brand'])['Order_Id'].count().reset_index(name='Switch_Count')
+    top3 = switches.sort_values(['Brand_dropped','Switch_Count'], ascending=[True,False]).groupby('Brand_dropped').head(3).reset_index(drop=True)
+    st.dataframe(top3)
 
 # --- Brand Correlation ---
 elif section == "🔗 Brand Correlation":
