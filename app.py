@@ -241,7 +241,7 @@ elif section == "👤 Customer Profiling":
         st.subheader("Next-Purchase Predictions (Heuristic)")
         st.dataframe(predict_next_purchases(cust), use_container_width=True)
 
-elif section == "👤 Model Predictions":
+elif section == "👤 Customer Profilling (Model Predictions)":
     st.subheader("Next-Purchase Model Predictions")
     cust = st.selectbox("Customer:", sorted(PRED_DF['Customer_Phone'].unique()))
     if cust:
