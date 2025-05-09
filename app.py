@@ -179,16 +179,30 @@ if section == "📊 EDA Overview":
         share=DF.groupby("SKU_Code")["Delivered Qty"].sum()/DF["Delivered Qty"].sum()*100
         st.bar_chart(share.nlargest(10))
     with tabs[9]:
-        from itertools import combinations; from collections import Counter
-        df_p=DF.copy(); df_p["Order_ID"]=df_p["Customer_Phone"].astype(str)+"_"+df_p["Delivered_date"].astype(str)
-        sets=df_p.groupby("Order_ID")["SKU_Code"].apply(set)
-        cnt=Counter();
-        for s in sets:
-            if len(s)>1:
-                for pair in combinations(sorted(s),2): cnt[pair]+=1
-        top_pairs=pd.Series(cnt).nlargest(10)
-        df_pairs=top_pairs.to_frame(name="Count"); df_pairs.index=df_pairs.index.map(lambda t:f"{t[0]} & {t[1]}")
-        st.bar_chart(df_pairs)
+    st.markdown("#### Top 10 SKU Pairs (Bought Together)")
+    from itertools import combinations
+    from collections import Counter
+
+    df_p = DF.copy()
+    df_p["Order_ID"] = (
+        df_p["Customer_Phone"].astype(str)
+        + "_"
+        + df_p["Delivered_date"].astype(str)
+    )
+    pair_sets = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
+
+    cnt = Counter()
+    for items in pair_sets:
+        if len(items) > 1:
+            for pair in combinations(sorted(items), 2):
+                cnt[pair] += 1
+
+    top_pairs = pd.Series(cnt).nlargest(10)
+    df_pairs  = top_pairs.to_frame(name="Count")
+    df_pairs.index = df_pairs.index.map(lambda t: f"{t[0]} & {t[1]}")
+
+    st.bar_chart(df_pairs)
+
     with tabs[10]:
         st.markdown("#### Distribution of Unique SKUs Purchased per Customer")
         sku_per_customer = DF.groupby("Customer_Phone")["SKU_Code"].nunique()
