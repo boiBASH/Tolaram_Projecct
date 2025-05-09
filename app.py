@@ -122,7 +122,7 @@ section = st.sidebar.radio(
     "Select Section:",
     [
         "📊 EDA Overview", "📉 Drop Detection", "👤 Customer Profiling",
-        "👤 Model Predictions", "🔁 Cross-Selling", "🔗 Brand Correlation",
+        "👤 Customer Profilling (Model Predictions)", "🔁 Cross-Selling", "🔗 Brand Correlation",
         "🤖 Recommender"
     ]
 )
