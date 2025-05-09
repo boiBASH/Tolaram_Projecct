@@ -128,7 +128,7 @@ if section == "📊 EDA Overview":
     tabs = st.tabs([
         "Top Revenue","Top Quantity","Buyer Types","Buyer Trends",
         "SKU Trends","Qty vs Revenue","Avg Order Value","Lifetime Value",
-        "SKU Share %","SKU Pairs"
+        "SKU Share %","SKU Pairs","SKU Variety"
     ])
     
     with tabs[0]:
@@ -182,13 +182,18 @@ if section == "📊 EDA Overview":
         from itertools import combinations; from collections import Counter
         df_p=DF.copy(); df_p["Order_ID"]=df_p["Customer_Phone"].astype(str)+"_"+df_p["Delivered_date"].astype(str)
         sets=df_p.groupby("Order_ID")["SKU_Code"].apply(set)
-        cnt=Counter()
+        cnt=Counter();
         for s in sets:
             if len(s)>1:
                 for pair in combinations(sorted(s),2): cnt[pair]+=1
         top_pairs=pd.Series(cnt).nlargest(10)
         df_pairs=top_pairs.to_frame(name="Count"); df_pairs.index=df_pairs.index.map(lambda t:f"{t[0]} & {t[1]}")
         st.bar_chart(df_pairs)
+    with tabs[10]:
+        st.markdown("#### Distribution of Unique SKUs Purchased per Customer")
+        sku_per_customer = DF.groupby("Customer_Phone")["SKU_Code"].nunique()
+        dist = sku_per_customer.value_counts().sort_index()
+        st.bar_chart(dist)
 
 # --- Drop Detection ---
 elif section=="📉 Drop Detection":
