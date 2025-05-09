@@ -343,42 +343,38 @@ if section == "📊 EDA Overview":
 
         # 10) Top 10 Most Frequently Bought SKU Pairs
     with tabs[9]:
-        st.markdown("#### Top 10 SKU Pairs (Bought Together)")
+    st.markdown("#### Top 10 SKU Pairs (Bought Together)")
 
-        from itertools import combinations
-        from collections import Counter
+    from itertools import combinations
+    from collections import Counter
 
-        df_p = DF.copy()
-        df_p["Order_ID"] = (
-            df_p["Customer_Phone"].astype(str)
-            + "_"
-            + df_p["Delivered_date"].astype(str)
-        )
+    # Build an Order_ID so we can see which SKUs were bought together
+    df_p = DF.copy()
+    df_p["Order_ID"] = (
+        df_p["Customer_Phone"].astype(str)
+        + "_"
+        + df_p["Delivered_date"].astype(str)
+    )
 
-        # Build a counter of SKU‐pairs
-        pair_sets = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
-        cnt = Counter()
-        for s in pair_sets:
-            if len(s) > 1:
-                for pair in combinations(sorted(s), 2):
-                    cnt[pair] += 1
+    # Gather unique SKU sets per order
+    pair_sets = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
 
-        # Turn into DataFrame with proper names in one go
-        top_pairs = pd.Series(cnt).nlargest(10)
-        df_pairs = (
-            top_pairs
-            .rename_axis("SKU Pair")
-            .reset_index(name="Count")
-        )
+    # Count every pair
+    cnt = Counter()
+    for items in pair_sets:
+        if len(items) > 1:
+            for pair in combinations(sorted(items), 2):
+                cnt[pair] += 1
 
-        # Format the tuple into a string
-        df_pairs["SKU Pair"] = df_pairs["SKU Pair"]\
-            .apply(lambda t: f"{t[0]} & {t[1]}")
+    # Turn the counter into a Series and take top 10
+    top_pairs = pd.Series(cnt).nlargest(10)
 
-        # Index by that label so bar_chart uses it
-        df_pairs = df_pairs.set_index("SKU Pair")
+    # Convert to a DataFrame with index = "A & B" and column "Count"
+    df_pairs = top_pairs.to_frame(name="Count")
+    df_pairs.index = df_pairs.index.map(lambda t: f"{t[0]} & {t[1]}")
 
-        st.bar_chart(df_pairs)
+    # Plot with Streamlit
+    st.bar_chart(df_pairs)
         
 elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
