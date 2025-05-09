@@ -250,7 +250,7 @@ section = st.sidebar.radio(
     ]
 )
 
-# --- EDA Overview) ---
+# --- EDA Overview ---
 if section == "📊 EDA Overview":
     st.subheader("Exploratory Data Analysis")
     tabs = st.tabs([
