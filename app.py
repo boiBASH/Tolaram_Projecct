@@ -344,18 +344,31 @@ if section == "📊 EDA Overview":
     # 10) Top 10 Most Frequently Bought SKU Pairs
     with tabs[9]:
         st.markdown("#### Top 10 SKU Pairs (Bought Together)")
-        df_p = DF.copy()
-        df_p["Order_ID"] = df_p["Customer_Phone"].astype(str) + "_" + df_p["Delivered_date"].astype(str)
-        pairs = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
+        # Build a Counter of pairs
         from itertools import combinations
         from collections import Counter
+
+        df_p = DF.copy()
+        df_p["Order_ID"] = df_p["Customer_Phone"].astype(str) + "_" + df_p["Delivered_date"].astype(str)
+        pair_sets = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
+
         cnt = Counter()
-        for s in pairs:
+        for s in pair_sets:
             if len(s) > 1:
-                for pair in combinations(sorted(s),2):
-                    cnt[pair]+=1
-        pair_df = pd.Series(dict(cnt)).nlargest(10)
-        st.bar_chart(pair_df)
+                for pair in combinations(sorted(s), 2):
+                    cnt[pair] += 1
+
+        # Convert to DataFrame with string labels
+        pair_series = pd.Series(cnt)
+        top_pairs = pair_series.nlargest(10)
+
+        df_pairs = top_pairs.reset_index()
+        df_pairs.columns = ["SKU Pair", "Count"]
+        # Stringify the tuple for display
+        df_pairs["SKU Pair"] = df_pairs["SKU Pair"].map(lambda t: f"{t[0]} & {t[1]}")
+        df_pairs = df_pairs.set_index("SKU Pair")
+
+        st.bar_chart(df_pairs)
         
 elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
