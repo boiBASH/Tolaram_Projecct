@@ -163,7 +163,7 @@ if section == "📊 EDA Overview":
         df_s["MonthTS"] = df_s["Month"].dt.to_timestamp()
         top5 = df_s.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(5).index
         trend = df_s[df_s["SKU_Code"].isin(top5)]
-        trend = trend.groupby(["MonthTS","SKU_Code"]).sum()["Delivered Qty"].unstack()
+        trend = trend.groupby(["MonthTS","SKU_Code"])["Delivered Qty"].sum().unstack()
         st.line_chart(trend)
     # 6) Qty vs Revenue
     with tabs[5]:
