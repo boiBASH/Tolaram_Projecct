@@ -250,7 +250,7 @@ section = st.sidebar.radio(
     ]
 )
 
-# --- EDA Overview  ---
+# --- EDA Overview ---
 if section == "📊 EDA Overview":
     st.subheader("Exploratory Data Analysis")
     tabs = st.tabs([
@@ -262,15 +262,13 @@ if section == "📊 EDA Overview":
     # 1) Top 10 SKUs by Revenue
     with tabs[0]:
         st.markdown("#### Top 10 SKUs by Total Revenue")
-        top_revenue = DF.groupby("SKU_Code")["Redistribution Value"] \
-                        .sum().nlargest(10)
+        top_revenue = DF.groupby("SKU_Code")["Redistribution Value"].sum().nlargest(10)
         st.bar_chart(top_revenue)
 
     # 2) Top 10 SKUs by Quantity
     with tabs[1]:
         st.markdown("#### Top 10 SKUs by Total Quantity")
-        top_qty = DF.groupby("SKU_Code")["Delivered Qty"] \
-                    .sum().nlargest(10)
+        top_qty = DF.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(10)
         st.bar_chart(top_qty)
 
     # 3) Repeat vs One-Time Buyers
@@ -281,100 +279,91 @@ if section == "📊 EDA Overview":
               .nunique()
               .rename("Purchase Count")
         )
-        summary = (buyer_counts == 1).map({True:"One-time",False:"Repeat"}) \
-                   .value_counts()
+        summary = (buyer_counts == 1).map({True: "One-time", False: "Repeat"}).value_counts()
         st.bar_chart(summary)
 
-    # 4) Monthly Trend for Top 5 Buyers
+    # 4) Monthly Spend Trend: Top 5 Buyers
     with tabs[3]:
         st.markdown("#### Monthly Spend Trend: Top 5 Buyers")
         df_b = DF.copy()
         df_b["MonthTS"] = df_b["Month"].dt.to_timestamp()
         top5_buyers = df_b.groupby("Customer_Phone")["Redistribution Value"] \
                           .sum().nlargest(5).index
-        trend_b = (df_b[df_b["Customer_Phone"].isin(top5_buyers)]
-                   .groupby(["MonthTS","Customer_Phone"])["Redistribution Value"]
-                   .sum()
-                   .unstack())
+        trend_b = (
+            df_b[df_b["Customer_Phone"].isin(top5_buyers)]
+              .groupby(["MonthTS","Customer_Phone"])["Redistribution Value"]
+              .sum()
+              .unstack()
+        )
         st.line_chart(trend_b)
 
-    # 5) Monthly Trend for Top 5 SKUs
+    # 5) Monthly Quantity Trend: Top 5 SKUs
     with tabs[4]:
         st.markdown("#### Monthly Quantity Trend: Top 5 SKUs")
         df_s = DF.copy()
         df_s["MonthTS"] = df_s["Month"].dt.to_timestamp()
         top5_skus = df_s.groupby("SKU_Code")["Delivered Qty"] \
                         .sum().nlargest(5).index
-        trend_s = (df_s[df_s["SKU_Code"].isin(top5_skus)]
-                   .groupby(["MonthTS","SKU_Code"])["Delivered Qty"]
-                   .sum()
-                   .unstack())
+        trend_s = (
+            df_s[df_s["SKU_Code"].isin(top5_skus)]
+              .groupby(["MonthTS","SKU_Code"])["Delivered Qty"]
+              .sum()
+              .unstack()
+        )
         st.line_chart(trend_s)
 
-    # 6) Quantity vs Revenue (two separate lines)
+    # 6) Monthly Quantity & Revenue
     with tabs[5]:
         st.markdown("#### Monthly Quantity & Revenue")
         df_m = DF.copy()
         df_m["MonthTS"] = df_m["Month"].dt.to_timestamp()
-        monthly = df_m.groupby("MonthTS")[["Delivered Qty","Redistribution Value"]] \
-                      .sum()
+        monthly = df_m.groupby("MonthTS")[["Delivered Qty","Redistribution Value"]].sum()
         st.line_chart(monthly)
 
     # 7) Top 10 Customers by Average Order Value
     with tabs[6]:
         st.markdown("#### Top 10 by Avg Order Value")
-        avg_order = DF.groupby("Customer_Phone")["Redistribution Value"] \
-                      .mean().nlargest(10)
+        avg_order = DF.groupby("Customer_Phone")["Redistribution Value"].mean().nlargest(10)
         st.bar_chart(avg_order)
 
     # 8) Top 10 Customers by Lifetime Value
     with tabs[7]:
         st.markdown("#### Top 10 by Lifetime Value")
-        ltv = DF.groupby("Customer_Phone")["Redistribution Value"] \
-                .sum().nlargest(10)
+        ltv = DF.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(10)
         st.bar_chart(ltv)
 
-    # 9) Top 10 SKUs by Quantity Share %
+    # 9) Top 10 SKUs by Share of Total Quantity
     with tabs[8]:
         st.markdown("#### Top 10 SKUs by Share of Total Qty")
-        share = (DF.groupby("SKU_Code")["Delivered Qty"].sum() /
-                 DF["Delivered Qty"].sum() * 100).nlargest(10)
+        share = (
+            DF.groupby("SKU_Code")["Delivered Qty"].sum()
+            / DF["Delivered Qty"].sum() * 100
+        ).nlargest(10)
         st.bar_chart(share)
 
-        # 10) Top 10 Most Frequently Bought SKU Pairs
+    # 10) Top 10 SKU Pairs (Bought Together)
     with tabs[9]:
-    st.markdown("#### Top 10 SKU Pairs (Bought Together)")
+        st.markdown("#### Top 10 SKU Pairs (Bought Together)")
+        from itertools import combinations
+        from collections import Counter
 
-    from itertools import combinations
-    from collections import Counter
+        df_p = DF.copy()
+        df_p["Order_ID"] = (
+            df_p["Customer_Phone"].astype(str)
+            + "_"
+            + df_p["Delivered_date"].astype(str)
+        )
+        pair_sets = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
+        cnt = Counter()
+        for items in pair_sets:
+            if len(items) > 1:
+                for pair in combinations(sorted(items), 2):
+                    cnt[pair] += 1
 
-    # Build an Order_ID so we can see which SKUs were bought together
-    df_p = DF.copy()
-    df_p["Order_ID"] = (
-        df_p["Customer_Phone"].astype(str)
-        + "_"
-        + df_p["Delivered_date"].astype(str)
-    )
-
-    # Gather unique SKU sets per order
-    pair_sets = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
-
-    # Count every pair
-    cnt = Counter()
-    for items in pair_sets:
-        if len(items) > 1:
-            for pair in combinations(sorted(items), 2):
-                cnt[pair] += 1
-
-    # Turn the counter into a Series and take top 10
-    top_pairs = pd.Series(cnt).nlargest(10)
-
-    # Convert to a DataFrame with index = "A & B" and column "Count"
-    df_pairs = top_pairs.to_frame(name="Count")
-    df_pairs.index = df_pairs.index.map(lambda t: f"{t[0]} & {t[1]}")
-
-    # Plot with Streamlit
-    st.bar_chart(df_pairs)
+        top_pairs = pd.Series(cnt).nlargest(10)
+        df_pairs = top_pairs.to_frame(name="Count")
+        df_pairs.index = df_pairs.index.map(lambda t: f"{t[0]} & {t[1]}")
+        st.bar_chart(df_pairs)
         
 elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
