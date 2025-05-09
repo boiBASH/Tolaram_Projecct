@@ -1,4 +1,5 @@
 import streamlit as st
+# Must be first Streamlit command
 st.set_page_config(page_title="Sales Intelligence Dashboard", layout="wide")
 
 import pandas as pd
@@ -154,7 +155,7 @@ if section == "📊 EDA Overview":
         df_b["MonthTS"] = df_b["Month"].dt.to_timestamp()
         top5 = df_b.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(5).index
         trend = df_b[df_b["Customer_Phone"].isin(top5)]
-        trend = trend.groupby(["MonthTS","Customer_Phone"]).sum()["Redistribution Value"].unstack()
+        trend = trend.groupby(["MonthTS","Customer_Phone"])["Redistribution Value"].sum().unstack()
         st.line_chart(trend)
     # 5) SKU Trends
     with tabs[4]:
