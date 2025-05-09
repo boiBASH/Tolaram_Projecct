@@ -250,7 +250,7 @@ section = st.sidebar.radio(
     ]
 )
 
-# --- EDA Overview (replace your old block entirely) ---
+# --- EDA Overview  ---
 if section == "📊 EDA Overview":
     st.subheader("Exploratory Data Analysis")
     tabs = st.tabs([
@@ -259,45 +259,103 @@ if section == "📊 EDA Overview":
         "SKU Share %", "SKU Pairs"
     ])
 
+    # 1) Top 10 SKUs by Revenue
     with tabs[0]:
-        fig = plot_top_skus_by_value(DF)
-        st.write(fig)
+        st.markdown("#### Top 10 SKUs by Total Revenue")
+        top_revenue = DF.groupby("SKU_Code")["Redistribution Value"] \
+                        .sum().nlargest(10)
+        st.bar_chart(top_revenue)
 
+    # 2) Top 10 SKUs by Quantity
     with tabs[1]:
-        fig = plot_top_skus_by_qty(DF)
-        st.write(fig)
+        st.markdown("#### Top 10 SKUs by Total Quantity")
+        top_qty = DF.groupby("SKU_Code")["Delivered Qty"] \
+                    .sum().nlargest(10)
+        st.bar_chart(top_qty)
 
+    # 3) Repeat vs One-Time Buyers
     with tabs[2]:
-        fig = plot_repeat_vs_one_time(DF)
-        st.write(fig)
+        st.markdown("#### Repeat vs One-Time Buyers")
+        buyer_counts = (
+            DF.groupby("Customer_Phone")["Delivered_date"]
+              .nunique()
+              .rename("Purchase Count")
+        )
+        summary = (buyer_counts == 1).map({True:"One-time",False:"Repeat"}) \
+                   .value_counts()
+        st.bar_chart(summary)
 
+    # 4) Monthly Trend for Top 5 Buyers
     with tabs[3]:
-        fig = plot_monthly_top5_buyers(DF)
-        st.write(fig)
+        st.markdown("#### Monthly Spend Trend: Top 5 Buyers")
+        df_b = DF.copy()
+        df_b["MonthTS"] = df_b["Month"].dt.to_timestamp()
+        top5_buyers = df_b.groupby("Customer_Phone")["Redistribution Value"] \
+                          .sum().nlargest(5).index
+        trend_b = (df_b[df_b["Customer_Phone"].isin(top5_buyers)]
+                   .groupby(["MonthTS","Customer_Phone"])["Redistribution Value"]
+                   .sum()
+                   .unstack())
+        st.line_chart(trend_b)
 
+    # 5) Monthly Trend for Top 5 SKUs
     with tabs[4]:
-        fig = plot_monthly_top5_skus(DF)
-        st.write(fig)
+        st.markdown("#### Monthly Quantity Trend: Top 5 SKUs")
+        df_s = DF.copy()
+        df_s["MonthTS"] = df_s["Month"].dt.to_timestamp()
+        top5_skus = df_s.groupby("SKU_Code")["Delivered Qty"] \
+                        .sum().nlargest(5).index
+        trend_s = (df_s[df_s["SKU_Code"].isin(top5_skus)]
+                   .groupby(["MonthTS","SKU_Code"])["Delivered Qty"]
+                   .sum()
+                   .unstack())
+        st.line_chart(trend_s)
 
+    # 6) Quantity vs Revenue (two separate lines)
     with tabs[5]:
-        fig = plot_dual_axis_quantity_revenue(DF)
-        st.write(fig)
+        st.markdown("#### Monthly Quantity & Revenue")
+        df_m = DF.copy()
+        df_m["MonthTS"] = df_m["Month"].dt.to_timestamp()
+        monthly = df_m.groupby("MonthTS")[["Delivered Qty","Redistribution Value"]] \
+                      .sum()
+        st.line_chart(monthly)
 
+    # 7) Top 10 Customers by Average Order Value
     with tabs[6]:
-        fig = plot_top_customers_avg_order_value(DF)
-        st.write(fig)
+        st.markdown("#### Top 10 by Avg Order Value")
+        avg_order = DF.groupby("Customer_Phone")["Redistribution Value"] \
+                      .mean().nlargest(10)
+        st.bar_chart(avg_order)
 
+    # 8) Top 10 Customers by Lifetime Value
     with tabs[7]:
-        fig = plot_top_customers_lifetime_value(DF)
-        st.write(fig)
+        st.markdown("#### Top 10 by Lifetime Value")
+        ltv = DF.groupby("Customer_Phone")["Redistribution Value"] \
+                .sum().nlargest(10)
+        st.bar_chart(ltv)
 
+    # 9) Top 10 SKUs by Quantity Share %
     with tabs[8]:
-        fig = plot_sku_concentration_pct(DF)
-        st.write(fig)
+        st.markdown("#### Top 10 SKUs by Share of Total Qty")
+        share = (DF.groupby("SKU_Code")["Delivered Qty"].sum() /
+                 DF["Delivered Qty"].sum() * 100).nlargest(10)
+        st.bar_chart(share)
 
+    # 10) Top 10 Most Frequently Bought SKU Pairs
     with tabs[9]:
-        fig = plot_sku_pairs(DF)
-        st.write(fig)
+        st.markdown("#### Top 10 SKU Pairs (Bought Together)")
+        df_p = DF.copy()
+        df_p["Order_ID"] = df_p["Customer_Phone"].astype(str) + "_" + df_p["Delivered_date"].astype(str)
+        pairs = df_p.groupby("Order_ID")["SKU_Code"].apply(set)
+        from itertools import combinations
+        from collections import Counter
+        cnt = Counter()
+        for s in pairs:
+            if len(s) > 1:
+                for pair in combinations(sorted(s),2):
+                    cnt[pair]+=1
+        pair_df = pd.Series(dict(cnt)).nlargest(10)
+        st.bar_chart(pair_df)
         
 elif section == "📉 Drop Detection":
     st.subheader("Brand-Level MoM Drop (>30%)")
