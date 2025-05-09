@@ -106,11 +106,25 @@ def plot_repeat_vs_one_time(df):
 def plot_monthly_top5_buyers(df):
     top5 = df.groupby("Customer_Phone")["Redistribution Value"].sum().nlargest(5).index
     df5 = df[df["Customer_Phone"].isin(top5)]
-    data = df5.groupby(['Month','Customer_Phone'])['Redistribution Value'].sum().reset_index()
+    data = (
+        df5
+        .groupby(['Month','Customer_Phone'])['Redistribution Value']
+        .sum()
+        .reset_index()
+    )
+    # ← Add this line:
+    data['Month'] = data['Month'].astype(str)
+
     fig, ax = plt.subplots(figsize=(8, 5))
-    sns.lineplot(data=data, x="Month", y="Redistribution Value", hue="Customer_Phone", marker="o", ax=ax)
+    sns.lineplot(
+        data=data,
+        x="Month", y="Redistribution Value",
+        hue="Customer_Phone",
+        marker="o", ax=ax
+    )
     ax.set_title("Monthly Value Trend: Top 5 Buyers", fontsize=14)
-    ax.set_xlabel("Month", fontsize=12); ax.set_ylabel("Spend", fontsize=12)
+    ax.set_xlabel("Month", fontsize=12)
+    ax.set_ylabel("Spend", fontsize=12)
     plt.xticks(rotation=45)
     plt.tight_layout()
     return fig
@@ -118,23 +132,41 @@ def plot_monthly_top5_buyers(df):
 def plot_monthly_top5_skus(df):
     top5 = df.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(5).index
     df5 = df[df["SKU_Code"].isin(top5)]
-    data = df5.groupby(['Month','SKU_Code'])['Delivered Qty'].sum().reset_index()
+    data = (
+        df5
+        .groupby(['Month','SKU_Code'])['Delivered Qty']
+        .sum()
+        .reset_index()
+    )
+    # ← And here:
+    data['Month'] = data['Month'].astype(str)
+
     fig, ax = plt.subplots(figsize=(8, 5))
-    sns.lineplot(data=data, x="Month", y="Delivered Qty", hue="SKU_Code", marker="o", ax=ax)
+    sns.lineplot(
+        data=data,
+        x="Month", y="Delivered Qty",
+        hue="SKU_Code",
+        marker="o", ax=ax
+    )
     ax.set_title("Monthly Qty Trend: Top 5 SKUs", fontsize=14)
-    ax.set_xlabel("Month", fontsize=12); ax.set_ylabel("Quantity", fontsize=12)
+    ax.set_xlabel("Month", fontsize=12)
+    ax.set_ylabel("Quantity", fontsize=12)
     plt.xticks(rotation=45)
     plt.tight_layout()
     return fig
 
 def plot_dual_axis_quantity_revenue(df):
     summary = df.groupby("Month")[["Delivered Qty","Redistribution Value"]].sum().reset_index()
+    # ← And here too:
+    summary['Month'] = summary['Month'].astype(str)
+
     fig, ax1 = plt.subplots(figsize=(8, 5))
     sns.lineplot(data=summary, x="Month", y="Delivered Qty", marker="o", ax=ax1)
     ax2 = ax1.twinx()
     sns.lineplot(data=summary, x="Month", y="Redistribution Value", marker="s", ax=ax2)
     ax1.set_title("Monthly Quantity vs Revenue", fontsize=14)
-    ax1.set_xlabel("Month", fontsize=12); ax1.set_ylabel("Qty", fontsize=12)
+    ax1.set_xlabel("Month", fontsize=12)
+    ax1.set_ylabel("Qty", fontsize=12)
     ax2.set_ylabel("Revenue", fontsize=12)
     plt.xticks(rotation=45)
     plt.tight_layout()
