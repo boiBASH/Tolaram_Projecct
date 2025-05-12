@@ -143,8 +143,8 @@ if section == "📊 EDA Overview":
         st.bar_chart(data)
     # 2) Top Quantity
     with tabs[1]:
-        st.markdown(f"**Top 10 SKUs by Quantity Sold**")
         data = DF.groupby("SKU_Code")["Delivered Qty"].sum().nlargest(10)
+        st.markdown(f"**Top 10 SKUs by Quantity Sold**")
         st.bar_chart(data)
     # 3) Buyer Types
     with tabs[2]:
