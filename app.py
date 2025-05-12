@@ -134,7 +134,7 @@ if section == "📊 EDA Overview":
     tabs = st.tabs([
         "Top Revenue", "Top Quantity", "Buyer Types", "Buyer Trends",
         "SKU Trends", "Qty vs Revenue", "Avg Order Value", "Lifetime Value",
-        "SKU Share %", "SKU Pairs", "SKU Variety", "Buyer Analysis", "Retention"
+        "SKU Share %", "SKU Pairs", "SKU Variety", "Buyer Analysis"#, "Retention"
     ])
     # 1) Top Revenue
     with tabs[0]:
@@ -222,7 +222,7 @@ if section == "📊 EDA Overview":
         st.bar_chart(dist)
     # 12) Buyer Analysis
     with tabs[11]:
-        st.markdown(f"**Buyer Analysis (Top Buyers and Button Buyers**")
+        st.markdown(f"**Buyer Analysis (Top Buyers and Button Buyers)**")
         mm = DF['Month'].max()
         bd = DF[DF['Month']==mm].groupby('Customer_Phone')['Redistribution Value'].sum()
         st.write("Top Buyers (Latest Month)")
