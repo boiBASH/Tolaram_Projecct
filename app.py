@@ -199,7 +199,7 @@ if section == "📊 EDA Overview":
         st.bar_chart(data)
     # 9) SKU Share %
     with tabs[8]:
-        st.markdown(f"**Top 10 SKUs by Share of Total Quantity**")
+        st.markdown(f"**Top 10 SKUs by Share of Total Quantity (in %)**")
         share = DF.groupby("SKU_Code")["Delivered Qty"].sum() / DF["Delivered Qty"].sum() * 100
         st.bar_chart(share.nlargest(10))
     # 10) SKU Pairs
@@ -216,13 +216,13 @@ if section == "📊 EDA Overview":
         st.bar_chart(df_pairs)
     # 11) SKU Variety
     with tabs[10]:
-        st.markdown(f"**Top**")
+        st.markdown(f"**Distribution of SKU Variety Per Customer (Number os customer by number of unique SKUs purchased)**")
         sku_var = DF.groupby("Customer_Phone")["SKU_Code"].nunique()
         dist = sku_var.value_counts().sort_index()
         st.bar_chart(dist)
     # 12) Buyer Analysis
     with tabs[11]:
-        st.markdown(f"**Top**")
+        st.markdown(f"**Buyer Analysis (Top Buyers and Button Buyers**")
         mm = DF['Month'].max()
         bd = DF[DF['Month']==mm].groupby('Customer_Phone')['Redistribution Value'].sum()
         st.write("Top Buyers (Latest Month)")
@@ -230,10 +230,10 @@ if section == "📊 EDA Overview":
         st.write("Bottom Buyers (Latest Month)")
         st.bar_chart(bd.nsmallest(10))
     # 13) Retention
-    with tabs[12]:
-        st.markdown(f"**Top**")
-        orders = DF.groupby('Month')['Order_Id'].nunique()
-        st.line_chart(orders.rolling(3).mean())
+    #with tabs[12]:
+    #    st.markdown(f"**Retention**")
+    #    orders = DF.groupby('Month')['Order_Id'].nunique()
+    #    st.line_chart(orders.rolling(3).mean())
 
 # --- Other Sections ---
 elif section == "📉 Drop Detection":
