@@ -216,11 +216,13 @@ if section == "📊 EDA Overview":
         st.bar_chart(df_pairs)
     # 11) SKU Variety
     with tabs[10]:
+        st.markdown(f"**Top**")
         sku_var = DF.groupby("Customer_Phone")["SKU_Code"].nunique()
         dist = sku_var.value_counts().sort_index()
         st.bar_chart(dist)
     # 12) Buyer Analysis
     with tabs[11]:
+        st.markdown(f"**Top**")
         mm = DF['Month'].max()
         bd = DF[DF['Month']==mm].groupby('Customer_Phone')['Redistribution Value'].sum()
         st.write("Top Buyers (Latest Month)")
@@ -229,6 +231,7 @@ if section == "📊 EDA Overview":
         st.bar_chart(bd.nsmallest(10))
     # 13) Retention
     with tabs[12]:
+        st.markdown(f"**Top**")
         orders = DF.groupby('Month')['Order_Id'].nunique()
         st.line_chart(orders.rolling(3).mean())
 
