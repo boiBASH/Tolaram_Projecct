@@ -138,6 +138,8 @@ if section == "📊 EDA Overview":
     ])
     # 1) Top Revenue
     with tabs[0]:
+        st.markdown(f"**Total Unique SKUs Bought:** {rep['Total Unique SKUs Bought']}")
+        st.markdown(f"**SKUs Bought:** {', '.join(rep['SKUs Bought'])}")
         data = DF.groupby("SKU_Code")["Redistribution Value"].sum().nlargest(10)
         st.bar_chart(data)
     # 2) Top Quantity
